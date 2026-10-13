@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function RegistrarDashboard() {
   const session = await requireRole("REGISTRAR");
 
-  const [active, approved, rejected, apps, pendingPres, donePres] =
+  const [active, approved, rejected, apps, pendingPres, donePres, awaitingVerification, openCorrections] =
     await Promise.all([
       prisma.applicationPostGraduate.count({ where: { status: "ACTIVE" } }),
       prisma.applicationPostGraduate.count({ where: { status: "APPROVED" } }),
@@ -24,6 +24,10 @@ export default async function RegistrarDashboard() {
       }),
       prisma.presentation.count({ where: { isDone: false } }),
       prisma.presentation.count({ where: { isDone: true } }),
+      prisma.applicationPostGraduate.count({
+        where: { verificationStatus: { in: ["NOT_VERIFIED", "UNDER_REVIEW"] } },
+      }),
+      prisma.correctionRequest.count({ where: { status: "OPEN" } }),
     ]);
 
   const months: { label: string; value: number }[] = [];
@@ -46,7 +50,7 @@ export default async function RegistrarDashboard() {
     <>
       <PageHeader
         title={`Welcome, ${session.fullName}`}
-        subtitle="Registrar — review registrations, approve applications and manage presentations."
+        subtitle="Registrar — the main handler for applications: verify student information, inform applicants and manage presentations."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -55,6 +59,18 @@ export default async function RegistrarDashboard() {
           value={active}
           hint="Awaiting review"
           accent="from-amber-500 to-orange-500"
+        />
+        <StatCard
+          label="Awaiting verification"
+          value={awaitingVerification}
+          hint="Information to check"
+          accent="from-rose-500 to-pink-500"
+        />
+        <StatCard
+          label="Open corrections"
+          value={openCorrections}
+          hint="Waiting on the applicant"
+          accent="from-fuchsia-500 to-purple-500"
         />
         <StatCard
           label="Approved"
@@ -102,6 +118,24 @@ export default async function RegistrarDashboard() {
           className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark"
         >
           Review new registrations →
+        </Link>
+        <Link
+          href="/registrar/applications"
+          className="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark"
+        >
+          All applications →
+        </Link>
+        <Link
+          href="/registrar/notify"
+          className="rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-semibold text-brand-dark transition hover:bg-brand-light"
+        >
+          Notify students
+        </Link>
+        <Link
+          href="/registrar/progress"
+          className="rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-semibold text-brand-dark transition hover:bg-brand-light"
+        >
+          Student progress
         </Link>
         <Link
           href="/registrar/presentations"

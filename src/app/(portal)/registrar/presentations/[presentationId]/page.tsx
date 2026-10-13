@@ -28,9 +28,11 @@ export default async function PresentationDetailPage({
           description: true,
           application: {
             select: {
+              id: true,
               fullName: true,
               degreeProgram: true,
               nic: true,
+              status: true,
             },
           },
           supervisors: {
@@ -211,7 +213,7 @@ export default async function PresentationDetailPage({
                               </span>
                             </div>
                             {review.comment && (
-                              <p className="mt-1 text-xs text-neutral-600">"{review.comment}"</p>
+                              <p className="mt-1 text-xs text-neutral-600">&ldquo;{review.comment}&rdquo;</p>
                             )}
                           </div>
                         ))}
@@ -230,6 +232,8 @@ export default async function PresentationDetailPage({
             presentationId={id}
             isDone={presentation.isDone}
             isFinal={presentation.isFinal}
+            applicationId={student.id}
+            applicationStatus={student.status}
           />
         </div>
       </div>

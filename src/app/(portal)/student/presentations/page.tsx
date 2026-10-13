@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
@@ -134,7 +133,7 @@ export default async function StudentPresentationsPage() {
               {pres.isDone && !pres.isFinal && (
                 <div className="mt-4 rounded-md bg-yellow-50 border border-yellow-200 p-3">
                   <p className="text-sm text-yellow-800">
-                    Your presentation has been completed and is awaiting the Registrar's final
+                    Your presentation has been completed and is awaiting the Registrar&apos;s final
                     approval.
                   </p>
                 </div>

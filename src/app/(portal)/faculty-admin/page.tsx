@@ -16,17 +16,30 @@ export default async function FacultyAdminDashboard() {
   const faculty = profile?.faculty ?? undefined;
 
   const where = faculty ? { faculty } : {};
-  const [active, approved, rejected] = await Promise.all([
-    prisma.applicationPostGraduate.count({
-      where: { ...where, status: "ACTIVE" },
-    }),
-    prisma.applicationPostGraduate.count({
-      where: { ...where, status: "APPROVED" },
-    }),
-    prisma.applicationPostGraduate.count({
-      where: { ...where, status: "REJECTED" },
-    }),
-  ]);
+  const [active, approved, rejected, openCorrections, awaitingFaculty] =
+    await Promise.all([
+      prisma.applicationPostGraduate.count({
+        where: { ...where, status: "ACTIVE" },
+      }),
+      prisma.applicationPostGraduate.count({
+        where: { ...where, status: "APPROVED" },
+      }),
+      prisma.applicationPostGraduate.count({
+        where: { ...where, status: "REJECTED" },
+      }),
+      // Corrections the faculty admin has raised that the student still owes.
+      prisma.correctionRequest.count({
+        where: { status: "OPEN", application: where },
+      }),
+      // Progress reports the supervisors have cleared, waiting on the faculty.
+      prisma.progressReport.count({
+        where: {
+          facultyStatus: "PENDING",
+          completedAt: { not: null },
+          proposal: { application: where },
+        },
+      }),
+    ]);
 
   return (
     <>
@@ -34,12 +47,12 @@ export default async function FacultyAdminDashboard() {
         title={`Welcome, ${session.fullName}`}
         subtitle={
           faculty
-            ? `Faculty Admin — ${faculty}: sign off registrar-approved applications.`
-            : "Faculty Admin — sign off registrar-approved applications."
+            ? `Faculty Admin — ${faculty}: check applications, communicate corrections to students and endorse progress reports.`
+            : "Faculty Admin — check applications, communicate corrections to students and endorse progress reports."
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Awaiting sign-off"
           value={active}
@@ -54,6 +67,18 @@ export default async function FacultyAdminDashboard() {
           label="Rejected"
           value={rejected}
           accent="from-rose-500 to-pink-500"
+        />
+        <StatCard
+          label="Open corrections"
+          value={openCorrections}
+          hint="Sent to students, not yet fixed"
+          accent="from-fuchsia-500 to-purple-500"
+        />
+        <StatCard
+          label="Progress to endorse"
+          value={awaitingFaculty}
+          hint="Cleared by supervisors"
+          accent="from-indigo-500 to-violet-500"
         />
       </div>
 
@@ -78,7 +103,13 @@ export default async function FacultyAdminDashboard() {
               href="/faculty-admin/applications"
               className="block rounded-xl border border-border bg-brand-light/40 px-4 py-3 text-sm font-semibold text-brand-dark transition hover:bg-brand hover:text-white"
             >
-              Review applications →
+              Review applications &amp; raise corrections →
+            </Link>
+            <Link
+              href="/faculty-admin/progress"
+              className="block rounded-xl border border-border bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition hover:bg-muted"
+            >
+              Endorse student progress →
             </Link>
             <Link
               href="/faculty-admin/rejected"

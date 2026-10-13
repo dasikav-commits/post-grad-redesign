@@ -7,6 +7,7 @@ import {
   type WindowStatus,
 } from "@/lib/progress";
 import { PageHeader, PlaceholderCard } from "@/components/page-header";
+import { ESCALATION_LABEL, ESCALATION_STYLE } from "@/lib/status-labels";
 import { SubmitForm } from "./submit-form";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +70,29 @@ export default async function StudentProgressPage() {
         title="Progress Reports"
         subtitle={`${schedule.length} reports required over ${app.durationYears ?? "—"} years — two each year (Jan–Jun and Jul–Dec).`}
       />
+
+      {/* Every report travels the same path: Supervisor → Faculty → Admin. */}
+      <div className="mb-4 rounded-lg border border-border bg-white p-4">
+        <p className="text-sm font-bold text-black">How a report is reviewed</p>
+        <ol className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          {[
+            ["1", "Supervisor", "Reviews and comments on your report"],
+            ["2", "Faculty Admin", "Endorses it and forwards it"],
+            ["3", "Main Admin", "Signs it off, or returns it to you"],
+          ].map(([n, who, what], i) => (
+            <li key={who} className="flex items-center gap-2">
+              {i > 0 && <span className="text-neutral-400">→</span>}
+              <span className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1">
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[10px] font-bold text-white">
+                  {n}
+                </span>
+                <span className="font-semibold text-black">{who}</span>
+                <span className="text-neutral-500">{what}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </div>
 
       {schedule.length === 0 ? (
         <PlaceholderCard>
@@ -135,6 +159,53 @@ export default async function StudentProgressPage() {
                         ))}
                       </div>
                     )}
+
+                    <div className="rounded border border-border bg-neutral-50 p-2">
+                      <p className="font-semibold text-black">Review chain</p>
+                      <div className="mt-1 space-y-1.5 text-xs">
+                        {[
+                          {
+                            who: "Supervisor",
+                            status:
+                              report.reviews.length > 0 &&
+                              report.reviews.every((r) => r.status === "APPROVED")
+                                ? "APPROVED"
+                                : report.reviews.length > 0
+                                  ? report.reviews[0].status
+                                  : "PENDING",
+                            comment: report.reviews
+                              .map((r) => r.comment)
+                              .filter(Boolean)
+                              .join(" · "),
+                          },
+                          {
+                            who: "Faculty Admin",
+                            status: report.facultyStatus,
+                            comment: report.facultyComment ?? "",
+                          },
+                          {
+                            who: "Main Admin",
+                            status: report.adminStatus,
+                            comment: report.adminComment ?? "",
+                          },
+                        ].map((stage, i) => (
+                          <div key={stage.who} className="flex flex-wrap items-center gap-2">
+                            {i > 0 && <span className="text-neutral-400">→</span>}
+                            <span className="font-medium text-black">{stage.who}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                ESCALATION_STYLE[stage.status] ?? "bg-neutral-100 text-neutral-600"
+                              }`}
+                            >
+                              {ESCALATION_LABEL[stage.status] ?? stage.status}
+                            </span>
+                            {stage.comment && (
+                              <span className="text-neutral-600">“{stage.comment}”</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : canSubmit(status) ? (
                   <div className="mt-2">

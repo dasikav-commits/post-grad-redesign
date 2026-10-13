@@ -63,6 +63,46 @@ enum StudyMode {
   PART_TIME
 }
 
+// How the applicant funds the research programme. Captured during registration
+// and surfaced in the Registrar's "Approved" table.
+enum FundingMethod {
+  SELF_FUNDED
+  EMPLOYER_SPONSORED
+  UNIVERSITY_GRANT
+  EXTERNAL_SCHOLARSHIP
+  OTHER
+}
+
+// Admin verification of the information a student uploaded with the application
+// (the "Form of Recorrection" review step).
+enum VerificationStatus {
+  NOT_VERIFIED
+  UNDER_REVIEW
+  VERIFIED
+  CORRECTION_REQUESTED
+}
+
+enum CorrectionStatus {
+  OPEN
+  RESOLVED
+}
+
+// Progress reports travel Supervisor → Faculty Admin → Main Admin. Each stage
+// records its own decision; PENDING means "not looked at yet".
+enum EscalationStatus {
+  PENDING
+  APPROVED
+  RETURNED
+}
+
+// A supervisor account provisioned by the Main Admin only becomes usable once
+// the Main Admin approves it.
+enum SupervisorApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // Lifecycle of a registration. Registrar is the gatekeeper:
 //  - ACTIVE: in progress / awaiting or passed registrar review (not yet rejected)
 //  - REJECTED: rejected by registrar; data retained for admin contact, but the
@@ -106,6 +146,13 @@ model PortalUser {
   registrar    RegistrarProfile?
   notifications Notification[]
 
+  // Verification / correction audit trail and direct messaging.
+  verifications    ApplicationVerification[]
+  correctionsRaised CorrectionRequest[]
+  messagesSent     Message[]               @relation("MessageSender")
+  messagesReceived Message[]               @relation("MessageRecipient")
+  approvedSupervisors SupervisorProfile[]  @relation("SupervisorApprover")
+
   @@map("user")
 }
 
@@ -127,6 +174,8 @@ model FacultyAdminProfile {
   facultyRef Faculty?   @relation(fields: [facultyId], references: [id], onDelete: SetNull)
 
   declarations ApplicantDeclaration[]
+  // Progress reports endorsed (or returned) by this faculty admin.
+  progressReviews ProgressReport[]
 
   @@map("faculty_admin")
 }
@@ -138,6 +187,8 @@ model AdminProfile {
   declarations  ApplicantDeclaration[]
   presentations Presentation[]
   notifications Notification[]
+  // Progress reports signed off (or returned) by the main admin.
+  progressReviews ProgressReport[]
 
   @@map("admin")
 }
@@ -159,10 +210,19 @@ model SupervisorProfile {
   facultyId  Int?       @map("faculty_id")
   facultyRef Faculty?   @relation(fields: [facultyId], references: [id], onDelete: SetNull)
 
+  // Portal access is gated on Main Admin approval. Supervisors created before
+  // this gate existed are backfilled to APPROVED by the migration.
+  approvalStatus SupervisorApprovalStatus @default(PENDING) @map("approval_status")
+  approvalNote   String?                  @map("approval_note")
+  approvedAt     DateTime?                @map("approved_at")
+  approvedById   Int?                     @map("approved_by_id")
+  approvedBy     PortalUser?              @relation("SupervisorApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
   proposals         ProposalSupervisor[]
   reviews           SupervisorProgressReview[]
   notifications     Notification[]
   progressSchedules ProgressReportSchedule[]
+  messages          Message[]
 
   @@map("supervisor")
 }
@@ -180,6 +240,9 @@ model Faculty {
   id            Int                       @id @default(autoincrement()) @map("faculty_id")
   name          String                    @unique @map("name")
   departments   Department[]
+  // Degrees are managed directly under the faculty — the department layer is no
+  // longer used to filter them in the admin structure manager or registration.
+  degrees       DegreeSought[]
   applications  ApplicationPostGraduate[]
   facultyAdmins FacultyAdminProfile[]
   supervisors   SupervisorProfile[]
@@ -208,6 +271,11 @@ model DegreeSought {
   studyModes    StudyMode[]       @map("study_modes")
   addDate       DateTime?         @db.Date @map("add_date")
   faculty       String?           @map("faculty")
+  // Direct faculty link — degrees are no longer filtered through a department.
+  facultyId     Int?              @map("faculty_id")
+  facultyRef    Faculty?          @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  // Kept for legacy rows / reporting; optional and no longer required to create
+  // or select a degree.
   department    String?           @map("department")
   departmentId  Int?              @map("department_id")
   departmentRef Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -224,6 +292,12 @@ model ApplicationPostGraduate {
   userId             Int?              @map("student_user_id")
   user               PortalUser?       @relation(fields: [userId], references: [id], onDelete: SetNull)
   status             ApplicationStatus @default(ACTIVE) @map("status")
+  // Assigned by the Registrar when the registration is completed, e.g.
+  // "PG/2026/007". Shown as "Reg No" on the approved-students table.
+  registrationNumber String?           @unique @map("registration_number")
+  // Main Admin verification of the uploaded application (Form of Recorrection).
+  verificationStatus VerificationStatus @default(NOT_VERIFIED) @map("verification_status")
+  verifiedAt         DateTime?         @map("verified_at")
   fullName           String            @map("full_name")
   nameWithInitials   String            @map("name_with_initials")
   // NIC is NOT globally unique: a rejected applicant may re-register. A partial
@@ -244,6 +318,9 @@ model ApplicationPostGraduate {
   durationYears      Int?              @map("duration_years")
   programStartYear   Int?              @map("program_start_year")
   registrationDate   DateTime          @default(now()) @map("registration_date")
+  // Funding: how the programme is paid for, plus any free-text detail.
+  fundingMethod      FundingMethod?    @map("funding_method")
+  fundingDetails     String?           @map("funding_details")
 
   emails                     ApplicantEmail[]
   contacts                   ApplicantContact[]
@@ -253,6 +330,9 @@ model ApplicationPostGraduate {
   declarations               ApplicantDeclaration[]
   researchProposals          ResearchProposal[]
   notifications              Notification[]
+  verifications              ApplicationVerification[]
+  corrections                CorrectionRequest[]
+  messages                   Message[]
 
   @@index([nic])
   @@map("application_post_graduate")
@@ -474,11 +554,100 @@ model ProgressReport {
   // stage is then considered complete. Null while still awaiting approvals.
   completedAt DateTime?               @map("completed_at")
 
+  // Escalation chain: Supervisor (reviews/completedAt) → Faculty Admin → Main
+  // Admin. A stage only becomes actionable once the previous one approved.
+  facultyStatus     EscalationStatus    @default(PENDING) @map("faculty_status")
+  facultyComment    String?             @map("faculty_comment")
+  facultyAdminId    Int?                @map("faculty_admin_id")
+  facultyAdmin      FacultyAdminProfile? @relation(fields: [facultyAdminId], references: [id], onDelete: SetNull)
+  facultyReviewedAt DateTime?           @map("faculty_reviewed_at")
+  adminStatus       EscalationStatus    @default(PENDING) @map("admin_status")
+  adminComment      String?             @map("admin_comment")
+  adminId           Int?                @map("admin_id")
+  admin             AdminProfile?       @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminReviewedAt   DateTime?           @map("admin_reviewed_at")
+
   files         ProgressReportFile[]
   reviews       SupervisorProgressReview[]
   presentations Presentation[]
 
+  @@index([facultyStatus])
+  @@index([adminStatus])
   @@map("progress_report")
+}
+
+// ---- Verification & corrections -----------------------------------------
+//
+// The Main Admin (and Faculty Admin / Registrar acting on their behalf) checks
+// the information a student uploaded with their application. Anything wrong is
+// raised as an itemised CorrectionRequest ("Form of Recorrection") which the
+// student sees in their portal and answers; the applicant is told by in-app
+// notification and email.
+
+model ApplicationVerification {
+  id            Int                     @id @default(autoincrement()) @map("verification_id")
+  applicationId Int                     @map("application_id")
+  application   ApplicationPostGraduate @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status        VerificationStatus      @map("status")
+  notes         String?                 @map("notes")
+  reviewerId    Int?                    @map("reviewer_id")
+  reviewer      PortalUser?             @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewerRole  UserRole?               @map("reviewer_role")
+  createdAt     DateTime                @default(now()) @map("created_at")
+
+  @@index([applicationId])
+  @@map("application_verification")
+}
+
+model CorrectionRequest {
+  id            Int                     @id @default(autoincrement()) @map("correction_id")
+  applicationId Int                     @map("application_id")
+  application   ApplicationPostGraduate @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  raisedById    Int?                    @map("raised_by_id")
+  raisedBy      PortalUser?             @relation(fields: [raisedById], references: [id], onDelete: SetNull)
+  raisedByRole  UserRole?               @map("raised_by_role")
+  // One correction per line, as typed by the reviewer.
+  items         String                  @map("items")
+  message       String?                 @map("message")
+  status        CorrectionStatus        @default(OPEN) @map("status")
+  emailSent     Boolean                 @default(false) @map("email_sent")
+  createdAt     DateTime                @default(now()) @map("created_at")
+  studentResponse String?               @map("student_response")
+  respondedAt   DateTime?               @map("responded_at")
+  resolvedAt    DateTime?               @map("resolved_at")
+
+  @@index([applicationId, status])
+  @@map("correction_request")
+}
+
+// ---- Direct messaging ----------------------------------------------------
+//
+// Student ↔ Supervisor message box. A conversation shares one `threadId`; the
+// first message of a thread has no parent. Delivered in-app and by email.
+
+model Message {
+  id            Int                     @id @default(autoincrement()) @map("message_id")
+  threadId      String                  @map("thread_id")
+  senderId      Int                     @map("sender_id")
+  sender        PortalUser              @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  // Recipient account, when they have one (supervisors may not yet).
+  recipientId   Int?                    @map("recipient_id")
+  recipient     PortalUser?             @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  // Supervisor side of the conversation, addressed by profile so a supervisor
+  // without an account still has an addressable inbox.
+  supervisorId  Int?                    @map("supervisor_id")
+  supervisor    SupervisorProfile?      @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+  applicationId Int?                    @map("application_id")
+  application   ApplicationPostGraduate? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  subject       String?                 @map("subject")
+  body          String                  @map("body")
+  isRead        Boolean                 @default(false) @map("is_read")
+  createdAt     DateTime                @default(now()) @map("created_at")
+
+  @@index([threadId])
+  @@index([recipientId, isRead])
+  @@index([supervisorId, isRead])
+  @@map("message")
 }
 
 model ProgressReportFile {
@@ -529,6 +698,11 @@ model Notification {
   message       String                   @map("message")
   isRead        Boolean                  @default(false) @map("is_read")
   createdAt     DateTime                 @default(now()) @map("created_at")
+  // Optional grouping ("correction", "faculty", "progress", …) shown as a badge
+  // in the student notification centre, plus who sent it and where it links.
+  category      String?                  @map("category")
+  senderName    String?                  @map("sender_name")
+  link          String?                  @map("link")
   applicationId Int?                     @map("application_id")
   application   ApplicationPostGraduate? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   supervisorId  Int?                     @map("supervisor_id")

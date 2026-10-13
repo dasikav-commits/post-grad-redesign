@@ -13,7 +13,8 @@ export default async function FacultyAdminProgressPage() {
     select: { faculty: true },
   });
 
-  const students = await getStudentProgressOverview(profile?.faculty ?? null);
+  // Progress is only tracked once a student's registration has been completed.
+  const students = await getStudentProgressOverview(profile?.faculty ?? null, true);
 
   return (
     <>
@@ -21,11 +22,11 @@ export default async function FacultyAdminProgressPage() {
         title="Student Progress"
         subtitle={
           profile?.faculty
-            ? `${profile.faculty} — presentations and progress reports, student by student.`
-            : "Presentations and progress reports, student by student."
+            ? `${profile.faculty} — registered students. Endorse supervisor-approved reports to forward them to the Main Admin.`
+            : "Registered students. Endorse supervisor-approved reports to forward them to the Main Admin."
         }
       />
-      <ProgressMonitor students={students} />
+      <ProgressMonitor students={students} reviewStage="FACULTY" />
     </>
   );
 }

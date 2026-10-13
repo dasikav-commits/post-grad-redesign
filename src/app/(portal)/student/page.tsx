@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/guard";
+import { prisma } from "@/lib/prisma";
 import { getStudentApplication } from "@/lib/student";
+import { unreadCount, unreadMessageCount } from "@/lib/notify";
 import { progressSchedule, windowStatus } from "@/lib/progress";
 import { PageHeader, PlaceholderCard } from "@/components/page-header";
 import { ProgressRing, StatCard, ChartCard } from "@/components/charts";
@@ -53,8 +55,32 @@ export default async function StudentDashboard() {
   const main = proposal?.supervisors.find((s) => s.isMain)?.supervisor;
   const co = (proposal?.supervisors ?? []).filter((s) => !s.isMain);
 
+  // What is waiting for the student: corrections, messages, notifications.
+  const [openCorrections, unreadMessages, unreadNotifications] = await Promise.all([
+    prisma.correctionRequest.count({
+      where: { status: "OPEN", application: { userId: session.userId } },
+    }),
+    unreadMessageCount(session.userId, null),
+    unreadCount(session.userId, null),
+  ]);
+
   return (
     <>
+      {openCorrections > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-bold text-black">
+            {openCorrections} correction{openCorrections === 1 ? "" : "s"} need your
+            attention
+          </p>
+          <p className="mt-1 text-sm text-neutral-700">
+            A reviewer asked you to fix something in your application.{" "}
+            <Link href="/student/corrections" className="font-semibold text-brand underline">
+              Open Corrections →
+            </Link>
+          </p>
+        </div>
+      )}
+
       <PageHeader
         title={`Welcome, ${session.fullName}`}
         subtitle="Your programme, supervisors and progress-report schedule."
@@ -100,7 +126,6 @@ export default async function StudentDashboard() {
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <ChartCard title="Programme">
           <Field k="Faculty" v={app.faculty} />
-          <Field k="Department" v={app.department} />
           <Field k="Degree" v={app.degreeProgram} />
           <Field
             k="Study mode"
@@ -167,6 +192,50 @@ export default async function StudentDashboard() {
             </Link>
           </p>
         </ChartCard>
+      </div>
+
+      {/* Everything the student can act on */}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {
+            href: "/student/requirements",
+            label: "Requirements",
+            hint: "See the 13 registration requirements",
+          },
+          {
+            href: "/student/corrections",
+            label: "Corrections",
+            hint:
+              openCorrections > 0
+                ? `${openCorrections} waiting for your reply`
+                : "Nothing outstanding",
+          },
+          {
+            href: "/student/messages",
+            label: "Messages",
+            hint:
+              unreadMessages > 0
+                ? `${unreadMessages} unread from your supervisors`
+                : "Message your supervisors",
+          },
+          {
+            href: "/student/notifications",
+            label: "Notifications",
+            hint:
+              unreadNotifications > 0
+                ? `${unreadNotifications} unread from your faculty`
+                : "Faculty & admin notices",
+          },
+        ].map((c) => (
+          <Link
+            key={c.href}
+            href={c.href}
+            className="rounded-xl border border-border bg-white p-4 transition hover:border-brand"
+          >
+            <p className="text-sm font-bold text-black">{c.label}</p>
+            <p className="mt-1 text-xs text-neutral-600">{c.hint}</p>
+          </Link>
+        ))}
       </div>
     </>
   );

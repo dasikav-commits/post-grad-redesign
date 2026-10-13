@@ -30,7 +30,8 @@ const academicSchema = z.object({
   creditCount: z.string().trim().optional().nullable(),
   periodFrom: dateStr,
   periodTo: dateStr,
-  file: optionalFile,
+  // Educational certificates are a registration requirement.
+  file: fileSchema,
 });
 
 const workSchema = z.object({
@@ -58,7 +59,9 @@ const supervisorSchema = z.object({
 
 const schema = z.object({
   facultyId: z.number().int().positive(),
-  departmentId: z.number().int().positive(),
+  // Departments were removed from the structure; still accepted (and ignored)
+  // for clients that post the old payload shape.
+  departmentId: z.number().int().positive().optional().nullable(),
   degreeId: z.number().int().positive(),
 
   fullName: z.string().trim().min(1),
@@ -68,6 +71,14 @@ const schema = z.object({
   maritalStatus: z.enum(["SINGLE", "MARRIED"]).nullable().optional(),
   email: z.string().email(),
   studyMode: z.enum(["FULL_TIME", "PART_TIME"]),
+  fundingMethod: z.enum([
+    "SELF_FUNDED",
+    "EMPLOYER_SPONSORED",
+    "UNIVERSITY_GRANT",
+    "EXTERNAL_SCHOLARSHIP",
+    "OTHER",
+  ], { message: "Select how the programme is funded." }),
+  fundingDetails: z.string().trim().optional().nullable(),
   englishProficiency: z.string().trim().optional().nullable(),
   residentialAddress: z.string().trim().optional().nullable(),
   officialAddress: z.string().trim().optional().nullable(),
@@ -77,12 +88,16 @@ const schema = z.object({
   works: z.array(workSchema),
   professionals: z.array(professionalSchema),
 
+  // Every document listed in the registration requirements.
   documents: z.object({
-    cv: optionalFile,
-    birthCertificate: optionalFile,
-    transcript: optionalFile,
-    referees: z.array(fileSchema),
-    budgets: z.array(fileSchema),
+    applicationForm: fileSchema,
+    cv: fileSchema,
+    birthCertificate: fileSchema,
+    transcript: fileSchema,
+    photo: fileSchema,
+    referees: z.array(fileSchema).min(2, "At least two referee reports are required."),
+    budgets: z.array(fileSchema).min(1, "The proposed budget is required."),
+    paymentReceipts: z.array(fileSchema).min(1, "At least one payment receipt is required."),
   }),
 
   proposal: z.object({
@@ -145,19 +160,16 @@ export async function POST(request: Request) {
     );
   }
 
-  // Validate the faculty → department → degree chain.
+  // Validate the faculty → degree chain. Degrees hang directly off a faculty;
+  // a legacy degree that only carries a department link is matched through it.
   const degree = await prisma.degreeSought.findUnique({
     where: { id: d.degreeId },
     include: { departmentRef: { include: { faculty: true } } },
   });
-  if (
-    !degree ||
-    !degree.departmentRef ||
-    degree.departmentRef.id !== d.departmentId ||
-    degree.departmentRef.faculty.id !== d.facultyId
-  ) {
+  const degreeFacultyId = degree?.facultyId ?? degree?.departmentRef?.facultyId ?? null;
+  if (!degree || degreeFacultyId !== d.facultyId) {
     return NextResponse.json(
-      { error: "Selected faculty, department and degree do not match." },
+      { error: "Selected faculty and degree do not match." },
       { status: 400 },
     );
   }
@@ -182,8 +194,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const faculty = degree.departmentRef.faculty;
-  const department = degree.departmentRef;
+  const faculty = await prisma.faculty.findUniqueOrThrow({
+    where: { id: d.facultyId },
+    select: { id: true, name: true },
+  });
+  const departmentName = degree.departmentRef?.name ?? degree.department ?? null;
   const years = durationYears(degree.level, d.studyMode);
   const startYear = new Date().getUTCFullYear();
 
@@ -201,10 +216,12 @@ export async function POST(request: Request) {
           residentialAddress: d.residentialAddress ?? null,
           officialAddress: d.officialAddress ?? null,
           faculty: faculty.name,
-          department: department.name,
+          department: departmentName,
           degreeProgram: degree.name,
           facultyId: faculty.id,
           studyMode: d.studyMode,
+          fundingMethod: d.fundingMethod,
+          fundingDetails: d.fundingDetails ?? null,
           durationYears: years,
           programStartYear: startYear,
           emails: { create: [{ email: d.email }] },
@@ -268,13 +285,25 @@ export async function POST(request: Request) {
 
       // Checklist document uploads.
       const docs: { file: { path: string; fileName: string }; category: string }[] = [];
-      const { cv, birthCertificate, transcript, referees, budgets } = d.documents;
-      if (cv) docs.push({ file: cv, category: "CV" });
-      if (birthCertificate)
-        docs.push({ file: birthCertificate, category: "BIRTH_CERTIFICATE" });
-      if (transcript) docs.push({ file: transcript, category: "TRANSCRIPT" });
+      const {
+        applicationForm,
+        cv,
+        birthCertificate,
+        transcript,
+        photo,
+        referees,
+        budgets,
+        paymentReceipts,
+      } = d.documents;
+      docs.push({ file: applicationForm, category: "APPLICATION_FORM" });
+      docs.push({ file: cv, category: "CV" });
+      docs.push({ file: birthCertificate, category: "BIRTH_CERTIFICATE" });
+      docs.push({ file: transcript, category: "TRANSCRIPT" });
+      docs.push({ file: photo, category: "PHOTO" });
       for (const r of referees) docs.push({ file: r, category: "REFEREE_REPORT" });
       for (const b of budgets) docs.push({ file: b, category: "BUDGET" });
+      for (const p of paymentReceipts)
+        docs.push({ file: p, category: "PAYMENT_RECEIPT" });
       if (docs.length) {
         await tx.uploadedFile.createMany({
           data: docs.map((x) => ({

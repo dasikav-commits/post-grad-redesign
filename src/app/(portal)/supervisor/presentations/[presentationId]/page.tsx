@@ -197,7 +197,7 @@ export default async function SupervisorPresentationDetailPage({
                               </span>
                             </div>
                             {review.comment && (
-                              <p className="mt-1 text-xs text-neutral-600">"{review.comment}"</p>
+                              <p className="mt-1 text-xs text-neutral-600">&ldquo;{review.comment}&rdquo;</p>
                             )}
                           </div>
                         ))}

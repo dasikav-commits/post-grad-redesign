@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/guard";
 import { hashPassword } from "@/lib/auth";
 import { nextUserCode } from "@/lib/user-code";
+import { nextRegistrationNumber } from "@/lib/registration-number";
+import { notifyFacultyAdmins, notifyRole } from "@/lib/notify";
 import {
   sendStudentApprovalNotification,
   sendPasswordResetNotification,
@@ -77,6 +79,8 @@ export async function approveRegistration(
 
   const tempPassword = custom || generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
+  // "Reg No" — handed out when the registration is completed.
+  const registrationNumber = app.registrationNumber ?? (await nextRegistrationNumber(app.registrationDate));
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -97,7 +101,7 @@ export async function approveRegistration(
 
       await tx.applicationPostGraduate.update({
         where: { id: app.id },
-        data: { status: "APPROVED", userId: user.id },
+        data: { status: "APPROVED", userId: user.id, registrationNumber },
       });
 
       // Move the declaration forward to the admin/faculty sign-off stage.
@@ -116,6 +120,24 @@ export async function approveRegistration(
 
     // Send email notification to student with login credentials
     await sendStudentApprovalNotification(email, app.fullName, tempPassword);
+
+    // The Main Admin and the faculty admins pick the student up from here.
+    await notifyRole("MAIN_ADMIN", {
+      title: "Registration completed",
+      message: `${app.fullName} (${registrationNumber}) has been approved by the Registrar and can now be verified.`,
+      applicationId: app.id,
+      category: "verification",
+      senderName: "Registrar",
+      link: `/admin/applications/${app.id}`,
+    });
+    await notifyFacultyAdmins(app.faculty, {
+      title: "Registration completed",
+      message: `${app.fullName} (${registrationNumber}) has been approved by the Registrar.`,
+      applicationId: app.id,
+      category: "verification",
+      senderName: "Registrar",
+      link: `/faculty-admin/applications/${app.id}`,
+    });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return { ok: false, error: "A user with that email already exists." };

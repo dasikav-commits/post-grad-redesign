@@ -14,17 +14,35 @@ export const dynamic = "force-dynamic";
 export default async function AdminDashboard() {
   const session = await requireRole("MAIN_ADMIN");
 
-  const [active, approved, rejected, apps, userCount, supervisorCount] =
-    await Promise.all([
-      prisma.applicationPostGraduate.count({ where: { status: "ACTIVE" } }),
-      prisma.applicationPostGraduate.count({ where: { status: "APPROVED" } }),
-      prisma.applicationPostGraduate.count({ where: { status: "REJECTED" } }),
-      prisma.applicationPostGraduate.findMany({
-        select: { faculty: true, registrationDate: true },
-      }),
-      prisma.portalUser.count(),
-      prisma.supervisorProfile.count(),
-    ]);
+  const [
+    active,
+    approved,
+    rejected,
+    apps,
+    userCount,
+    supervisorCount,
+    awaitingVerification,
+    pendingSupervisors,
+    completedPresentations,
+    upcomingPresentations,
+  ] = await Promise.all([
+    prisma.applicationPostGraduate.count({ where: { status: "ACTIVE" } }),
+    prisma.applicationPostGraduate.count({ where: { status: "APPROVED" } }),
+    prisma.applicationPostGraduate.count({ where: { status: "REJECTED" } }),
+    prisma.applicationPostGraduate.findMany({
+      select: { faculty: true, registrationDate: true },
+    }),
+    prisma.portalUser.count(),
+    prisma.supervisorProfile.count(),
+    // Student information waiting to be verified after registration.
+    prisma.applicationPostGraduate.count({
+      where: { verificationStatus: { in: ["NOT_VERIFIED", "UNDER_REVIEW"] } },
+    }),
+    // Supervisors waiting for portal access approval.
+    prisma.supervisorProfile.count({ where: { approvalStatus: "PENDING" } }),
+    prisma.presentation.count({ where: { isDone: true, isFinal: true } }),
+    prisma.presentation.count({ where: { isDone: false } }),
+  ]);
 
   const total = active + approved + rejected;
 
@@ -58,7 +76,7 @@ export default async function AdminDashboard() {
     <>
       <PageHeader
         title={`Welcome, ${session.fullName}`}
-        subtitle="Main Admin — faculties, degrees, users and application overview."
+        subtitle="Main Admin — verify student information, approve supervisor access, and oversee faculties, degrees, progress and presentations."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -86,8 +104,40 @@ export default async function AdminDashboard() {
         <StatCard
           label="Supervisors"
           value={supervisorCount}
-          hint="Registered supervisors"
+          hint={`${pendingSupervisors} awaiting approval`}
           accent="from-amber-500 to-orange-500"
+          icon={<IconStar />}
+        />
+      </div>
+
+      {/* What needs the Main Admin's attention */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="To verify"
+          value={awaitingVerification}
+          hint="Student information awaiting verification"
+          accent="from-rose-500 to-pink-500"
+          icon={<IconCheck />}
+        />
+        <StatCard
+          label="Supervisor approvals"
+          value={pendingSupervisors}
+          hint="Portal access requests"
+          accent="from-fuchsia-500 to-purple-500"
+          icon={<IconUsers />}
+        />
+        <StatCard
+          label="Completed presentations"
+          value={completedPresentations}
+          hint="Approved results"
+          accent="from-emerald-500 to-teal-500"
+          icon={<IconDoc />}
+        />
+        <StatCard
+          label="Upcoming presentations"
+          value={upcomingPresentations}
+          hint="Scheduled, not yet presented"
+          accent="from-indigo-500 to-violet-500"
           icon={<IconStar />}
         />
       </div>
@@ -129,9 +179,11 @@ export default async function AdminDashboard() {
         <ChartCard title="Quick actions" subtitle="Common admin tasks">
           <div className="grid grid-cols-2 gap-3">
             {[
-              { href: "/admin/applications", label: "Applications" },
+              { href: "/admin/applications", label: "Verify applications" },
+              { href: "/admin/presentations", label: "Presentations" },
+              { href: "/admin/progress", label: "Student progress" },
               { href: "/admin/structure", label: "Faculties & Degrees" },
-              { href: "/admin/supervisors", label: "Supervisors" },
+              { href: "/admin/supervisors", label: "Approve supervisors" },
               { href: "/admin/users", label: "Users" },
             ].map((a) => (
               <Link

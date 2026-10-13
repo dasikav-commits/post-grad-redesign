@@ -4,10 +4,8 @@ import { useState } from "react";
 import type { DegreeLevel, StudyMode } from "@prisma/client";
 import {
   createDegree,
-  createDepartment,
   createFaculty,
   deleteDegree,
-  deleteDepartment,
   deleteFaculty,
   renameFaculty,
   type ActionResult,
@@ -26,15 +24,11 @@ const MODE_LABEL: Record<StudyMode, string> = {
   FULL_TIME: "Full time",
   PART_TIME: "Part time",
 };
-export type DepartmentNode = {
-  id: number;
-  name: string;
-  degrees: DegreeNode[];
-};
+
 export type FacultyNode = {
   id: number;
   name: string;
-  departments: DepartmentNode[];
+  degrees: DegreeNode[];
 };
 
 const inputClass =
@@ -56,6 +50,12 @@ function useAction() {
   return { ...action, run };
 }
 
+/**
+ * Faculties & Degrees.
+ *
+ * Degrees hang directly off a faculty — the department layer is no longer used
+ * to filter them here or during student registration.
+ */
 export function StructureManager({ faculties }: { faculties: FacultyNode[] }) {
   return (
     <div className="space-y-6">
@@ -124,7 +124,12 @@ function FacultyCard({ faculty }: { faculty: FacultyNode }) {
           </form>
         ) : (
           <>
-            <h3 className="text-base font-bold text-black">{faculty.name}</h3>
+            <div>
+              <h3 className="text-base font-bold text-black">{faculty.name}</h3>
+              <p className="text-xs text-neutral-500">
+                {faculty.degrees.length} degree{faculty.degrees.length === 1 ? "" : "s"}
+              </p>
+            </div>
             <div className="flex gap-2">
               <button onClick={() => setEditing(true)} className={ghostBtn}>
                 Rename
@@ -142,80 +147,41 @@ function FacultyCard({ faculty }: { faculty: FacultyNode }) {
 
       <div className="space-y-4 px-4 py-4">
         {error && <p className="text-sm text-black">{error}</p>}
-        {faculty.departments.map((d) => (
-          <DepartmentRow key={d.id} department={d} />
-        ))}
-        <AddDepartment facultyId={faculty.id} />
-      </div>
-    </div>
-  );
-}
 
-function AddDepartment({ facultyId }: { facultyId: number }) {
-  const { pending, error, run } = useAction();
-  return (
-    <form
-      action={(fd) => run(createDepartment, fd)}
-      className="flex gap-2 border-t border-dashed border-border pt-3"
-    >
-      <input type="hidden" name="facultyId" value={facultyId} />
-      <input name="name" placeholder="Add department" className={inputClass} required />
-      <button type="submit" disabled={pending} className={ghostBtn}>
-        Add dept
-      </button>
-      {error && <p className="self-center text-sm text-black">{error}</p>}
-    </form>
-  );
-}
-
-function DepartmentRow({ department }: { department: DepartmentNode }) {
-  const { pending, error, run } = useAction();
-  return (
-    <div className="rounded-md border border-border bg-muted/40 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-semibold text-black">{department.name}</p>
-        <form action={(fd) => run(deleteDepartment, fd)}>
-          <input type="hidden" name="id" value={department.id} />
-          <button type="submit" disabled={pending} className={ghostBtn}>
-            Remove
-          </button>
-        </form>
-      </div>
-
-      <ul className="mb-2 space-y-1">
-        {department.degrees.length === 0 ? (
-          <li className="text-xs text-neutral-500">No degrees yet.</li>
-        ) : (
-          department.degrees.map((deg) => (
-            <li
-              key={deg.id}
-              className="flex items-center justify-between rounded border border-border bg-white px-2.5 py-1.5"
-            >
-              <span className="text-sm text-black">
-                {deg.name}
-                <span className="ml-2 rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  {deg.level}
-                </span>
-                {deg.studyModes.map((m) => (
-                  <span
-                    key={m}
-                    className="ml-1 rounded border border-brand px-1.5 py-0.5 text-[10px] font-semibold text-black"
-                  >
-                    {MODE_LABEL[m]}
+        <ul className="space-y-1">
+          {faculty.degrees.length === 0 ? (
+            <li className="text-xs text-neutral-500">No degrees yet.</li>
+          ) : (
+            faculty.degrees.map((deg) => (
+              <li
+                key={deg.id}
+                className="flex items-center justify-between rounded border border-border bg-white px-2.5 py-1.5"
+              >
+                <span className="text-sm text-black">
+                  {deg.name}
+                  <span className="ml-2 rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                    {deg.level}
                   </span>
-                ))}
-                {deg.type && (
-                  <span className="ml-1 text-xs text-neutral-500">{deg.type}</span>
-                )}
-              </span>
-              <DeleteDegreeButton id={deg.id} />
-            </li>
-          ))
-        )}
-      </ul>
+                  {deg.studyModes.map((m) => (
+                    <span
+                      key={m}
+                      className="ml-1 rounded border border-brand px-1.5 py-0.5 text-[10px] font-semibold text-black"
+                    >
+                      {MODE_LABEL[m]}
+                    </span>
+                  ))}
+                  {deg.type && (
+                    <span className="ml-1 text-xs text-neutral-500">{deg.type}</span>
+                  )}
+                </span>
+                <DeleteDegreeButton id={deg.id} />
+              </li>
+            ))
+          )}
+        </ul>
 
-      <AddDegree departmentId={department.id} />
-      {error && <p className="mt-1 text-sm text-black">{error}</p>}
+        <AddDegree facultyId={faculty.id} />
+      </div>
     </div>
   );
 }
@@ -232,14 +198,14 @@ function DeleteDegreeButton({ id }: { id: number }) {
   );
 }
 
-function AddDegree({ departmentId }: { departmentId: number }) {
+function AddDegree({ facultyId }: { facultyId: number }) {
   const { pending, error, run } = useAction();
   return (
     <form
       action={(fd) => run(createDegree, fd)}
-      className="flex flex-wrap items-center gap-2"
+      className="flex flex-wrap items-center gap-2 border-t border-dashed border-border pt-3"
     >
-      <input type="hidden" name="departmentId" value={departmentId} />
+      <input type="hidden" name="facultyId" value={facultyId} />
       <input
         name="name"
         placeholder="Degree name (e.g. PhD in Computer Science)"

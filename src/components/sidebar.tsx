@@ -10,6 +10,10 @@ type Props = {
   role: UserRole;
   fullName: string;
   email: string;
+  /** Supervisor accounts stay locked until the Main Admin approves them. */
+  locked?: boolean;
+  /** Unread message-box count, badged on the Messages nav item. */
+  messageCount?: number;
 };
 
 /* Minimal inline icons keyed by nav label keyword. */
@@ -31,6 +35,33 @@ function NavIcon({ label }: { label: string }) {
         <path d="M8 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2" />
         <rect x="8" y="2" width="8" height="4" rx="1" />
         <path d="M8 12h8M8 16h5" />
+      </svg>
+    );
+  if (l.includes("message"))
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    );
+  if (l.includes("notification"))
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+      </svg>
+    );
+  if (l.includes("requirement") || l.includes("correction"))
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 11l3 3L22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    );
+  if (l.includes("notify"))
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M22 2 11 13" />
+        <path d="M22 2 15 22l-4-9-9-4z" />
       </svg>
     );
   if (l.includes("proposal") || l.includes("progress") || l.includes("review"))
@@ -83,7 +114,7 @@ function NavIcon({ label }: { label: string }) {
   );
 }
 
-export function Sidebar({ role, fullName, email }: Props) {
+export function Sidebar({ role, fullName, email, locked = false, messageCount = 0 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const links = ROLE_NAV[role];
@@ -167,7 +198,12 @@ export function Sidebar({ role, fullName, email }: Props) {
         </button>
       </div>
 
-      <nav className="flex flex-1 flex-col space-y-1 overflow-hidden px-3 py-4">
+      <nav className="flex flex-1 flex-col space-y-1 overflow-y-auto px-3 py-4">
+        {locked && (
+          <p className="mb-2 rounded-xl bg-white/15 px-3 py-2 text-xs font-medium text-white">
+            Awaiting Main Admin approval — the portal is locked.
+          </p>
+        )}
         {links.map((link) => {
           const active =
             pathname === link.href ||
@@ -179,19 +215,29 @@ export function Sidebar({ role, fullName, email }: Props) {
                   otherLink.href.startsWith(link.href) &&
                   pathname.startsWith(otherLink.href),
               ));
+          const badge =
+            link.label.toLowerCase().includes("message") && messageCount > 0
+              ? messageCount
+              : 0;
           return (
             <Link
               key={link.href}
               onClick={() => setMobileOpen(false)}
               href={link.href}
+              aria-disabled={locked}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                 active
                   ? "bg-white text-brand shadow-sm"
                   : "text-white/80 hover:bg-white/10 hover:text-white"
-              }`}
+              } ${locked ? "opacity-50" : ""}`}
             >
               <NavIcon label={link.label} />
-              {link.label}
+              <span className="flex-1">{link.label}</span>
+              {badge > 0 && (
+                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-brand">
+                  {badge > 99 ? "99+" : badge}
+                </span>
+              )}
             </Link>
           );
         })}
