@@ -2,13 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/guard";
+import { requireApprovedSupervisor } from "@/lib/guard";
 import { notifyUser, notifyFacultyAdmins, notifyRole } from "@/lib/notify";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export async function submitSupervisorReview(form: FormData): Promise<ActionResult> {
-  const session = await requireRole("SUPERVISOR");
+  // Portal access must have been approved by the Main Admin.
+  const gate = await requireApprovedSupervisor();
+  if (!gate.ok) return gate;
+  const { supervisorId } = gate;
 
   const progressId = Number(form.get("progressId"));
   const status = String(form.get("status") ?? "");
@@ -18,14 +21,7 @@ export async function submitSupervisorReview(form: FormData): Promise<ActionResu
     return { ok: false, error: "Invalid review request." };
   }
 
-  const supervisor = await prisma.supervisorProfile.findUnique({
-    where: { userId: session.userId },
-    select: { id: true },
-  });
-
-  if (!supervisor) {
-    return { ok: false, error: "Supervisor profile was not found." };
-  }
+  const supervisor = { id: supervisorId };
 
   const report = await prisma.progressReport.findUnique({
     where: { id: progressId },

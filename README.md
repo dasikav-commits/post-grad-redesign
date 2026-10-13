@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Postgraduate Portal — University of Wayamba
 
-## Getting Started
+Next.js (App Router) + Prisma + Supabase Postgres portal covering the whole
+postgraduate registration lifecycle: public registration wizard, student portal,
+supervisor portal, faculty admin, registrar and main admin.
 
-First, run the development server:
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+
+# .env — see "Environment" below
+npx prisma generate
+npx prisma migrate deploy   # applies prisma/migrations/*
+node prisma/seed.mjs        # seeds the MAIN_ADMIN (admin@wayamba.lk / Admin@123)
+
+npm run dev                 # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm run build` runs `prisma generate` first, so the Prisma engines must be
+downloadable on the build machine.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Supabase Postgres connection string (Prisma) |
+| `AUTH_SECRET` | Secret used to sign the session cookie (jose JWT) |
+| `NEXT_PUBLIC_APP_URL` | Public base URL, used in every email link |
+| `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Storage bucket `registration-files` |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Outgoing mail (falls back to console logging when unset) |
 
-## Learn More
+## Roles and home pages
 
-To learn more about Next.js, take a look at the following resources:
+| Role | Home | What they do |
+| --- | --- | --- |
+| Main Admin | `/admin` | Verify student information ("Form of Recorrection"), request corrections, notify students, approve supervisor portal access, manage faculties/degrees/users, view progress and presentations |
+| Faculty Admin | `/faculty-admin` | Check applications in their faculty, communicate errors/corrections to students, endorse progress reports, export to Excel |
+| Registrar | `/registrar` | Main handler for applications: new registrations, all applications, notify students, approved list with registration numbers, presentations |
+| Supervisor | `/supervisor` | Review progress reports, mark presentations complete, message students — **only after Main Admin approval** |
+| Student | `/student` | Requirements checklist, corrections, messages to supervisors, notifications, progress reports, presentations |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Workflow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Applicant completes the public wizard at `/register` (all 13 requirements are
+   enforced before submission) → application `ACTIVE`.
+2. Faculty Admin / Registrar / Main Admin review it, request corrections and
+   notify the student (portal + email).
+3. Registrar schedules a presentation; the supervisor marks it complete; the
+   Registrar approves the result → application `APPROVED`, student account and
+   `PG/<year>/<seq>` registration number are created.
+4. Main Admin verifies the registered student's information.
+5. Progress reports escalate Supervisor → Faculty Admin → Main Admin. Student
+   progress is only tracked once registration is complete.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See `WORKFLOW_IMPLEMENTATION.md` for the detailed flow, notifications and the
+October 2026 portal improvements.

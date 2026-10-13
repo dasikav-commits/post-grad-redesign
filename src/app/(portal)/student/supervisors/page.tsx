@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { PageHeader, PlaceholderCard } from "@/components/page-header";
@@ -21,8 +22,10 @@ const REVIEW_STYLES: Record<string, string> = {
 export default async function StudentSupervisorsPage() {
   const session = await requireRole("STUDENT");
 
+  // Latest application regardless of status, so supervisors (and the message
+  // box) are available as soon as the student has proposed them.
   const app = await prisma.applicationPostGraduate.findFirst({
-    where: { userId: session.userId, status: "APPROVED" },
+    where: { userId: session.userId },
     orderBy: { id: "desc" },
     select: {
       researchProposals: {
@@ -40,6 +43,8 @@ export default async function StudentSupervisorsPage() {
                   title: true,
                   university: true,
                   telephone: true,
+                  userId: true,
+                  approvalStatus: true,
                   user: { select: { email: true } },
                 },
               },
@@ -73,7 +78,8 @@ export default async function StudentSupervisorsPage() {
       <>
         <PageHeader title="Supervisors" subtitle="Your assigned supervisors" />
         <PlaceholderCard>
-          Your supervisors will appear here once your registration is approved.
+          Your supervisors will appear here once you have proposed them in your
+          application.
         </PlaceholderCard>
       </>
     );
@@ -153,6 +159,42 @@ export default async function StudentSupervisorsPage() {
                     <span className="text-neutral-400">Phone not available</span>
                   )}
                 </div>
+              </div>
+
+              {/* Requirement: student ↔ supervisor communication */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {sup.userId && sup.approvalStatus === "APPROVED" ? (
+                  <Link
+                    href={`/student/messages?supervisor=${sup.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-dark"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Message supervisor
+                  </Link>
+                ) : sup.user?.email ? (
+                  <a
+                    href={`mailto:${sup.user.email}`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-brand px-3 py-1.5 text-sm font-semibold text-brand-dark hover:bg-brand-light"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="m3 7 9 6 9-6" />
+                    </svg>
+                    Email supervisor
+                  </a>
+                ) : (
+                  <span className="rounded-md bg-muted px-3 py-1.5 text-sm text-neutral-500">
+                    Contact details not available yet
+                  </span>
+                )}
+                <Link
+                  href="/student/messages"
+                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium text-black hover:border-brand"
+                >
+                  Open message box
+                </Link>
               </div>
 
               <div className="mt-4 border-t border-border pt-3">

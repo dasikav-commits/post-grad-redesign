@@ -128,7 +128,6 @@ export default async function Page({
             <Field k="Name with initials" v={app.nameWithInitials} />
             <Field k="Date of birth" v={app.dateOfBirth.toLocaleDateString()} />
             <Field k="Faculty" v={app.faculty} />
-            <Field k="Department" v={app.department} />
             <Field k="Degree" v={app.degreeProgram} />
             <Field
               k="Study mode"

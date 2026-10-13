@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/guard";
+import { requireApprovedSupervisor } from "@/lib/guard";
 import { notifyRole } from "@/lib/notify";
 
 export type MarkPresentationDoneResult =
@@ -16,7 +16,10 @@ export type MarkPresentationDoneResult =
 export async function markPresentationDone(
   presentationId: number,
 ): Promise<MarkPresentationDoneResult> {
-  const session = await requireRole("SUPERVISOR");
+  // Portal access must have been approved by the Main Admin.
+  const gate = await requireApprovedSupervisor();
+  if (!gate.ok) return gate;
+  const { session } = gate;
 
   const presentation = await prisma.presentation.findUnique({
     where: { id: presentationId },

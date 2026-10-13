@@ -13,12 +13,15 @@ const ALLOWED = new Set([
 
 // Whitelist of logical folders the registration wizard may upload into.
 const FOLDERS = new Set([
+  "application-form",
   "academic",
   "work",
   "professional",
   "cv",
   "birth-certificate",
   "transcript",
+  "photo",
+  "payment-receipt",
   "referee",
   "budget",
   "supervisor-consent",

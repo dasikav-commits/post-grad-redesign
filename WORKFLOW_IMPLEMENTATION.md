@@ -456,3 +456,114 @@ The complete postgraduate registration and presentation workflow has been succes
 ✅ Full integration with existing system
 
 All features are production-ready and fully tested. The implementation is modular and ready for email provider integration and future enhancements.
+
+---
+
+# Portal Improvements (October 2026)
+
+Migration: `prisma/migrations/20261013000000_verification_corrections_messaging`.
+It adds the `ApplicationVerification`, `CorrectionRequest` and `Message` tables,
+`verification_status` / `verified_at` / `registration_number` / `funding_method`
+/ `funding_details` on the application, escalation columns on `progress_report`,
+`category` / `sender_name` / `link` on `notification`, `faculty_id` on
+`degree_sought` and the supervisor approval gate. Existing supervisors are
+backfilled to `APPROVED`, existing degrees are attached to their faculty, and
+every completed registration is given a `PG/<year>/<seq>` number.
+
+## Main Admin
+
+1. **Student information verification ("Form of Recorrection")** —
+   `/admin/applications` lists every application with its verification state,
+   requirement score and open corrections (filterable by status and by
+   verification). `/admin/applications/<id>` opens the full review packet
+   (`src/components/application-review.tsx`): identity, contacts, programme,
+   funding, every uploaded document grouped by requirement category,
+   qualifications, proposal and supervisors, plus the 13-item checklist.
+   `VerificationPanel` records `VERIFIED`, `UNDER_REVIEW` or
+   `CORRECTION_REQUESTED` with notes, and keeps an audit trail in
+   `application_verification`.
+2. **Notify after recorrection** — `notifyStudent` in `src/lib/review-actions.ts`
+   writes an in-app notification *and* sends the shared portal email template
+   (`sendPortalEmail`). If the applicant has no portal account yet the message is
+   handed to the Registrar to relay.
+3. **Departments removed** — `/admin/structure` now manages Faculties and the
+   degrees attached to them (`createDegree(form)` takes `facultyId`). Legacy
+   degrees that only carry a department link are still listed under their
+   faculty, and a faculty cannot be deleted while degrees exist.
+4. **Student progress only after registration** —
+   `getStudentProgressOverview(facultyName?, completedOnly)` filters on
+   `status: "APPROVED"`; `/admin/progress`, `/faculty-admin/progress` and
+   `/registrar/progress` all pass `completedOnly = true`.
+5. **Completed presentations** — `/admin/presentations` shows every presentation
+   with scheduled/completed/approved counters and separate completed and
+   scheduled tables.
+
+## Faculty Admin
+
+6. **Communicate corrections** — `/faculty-admin/applications` (scoped to the
+   admin's faculty) and `/faculty-admin/applications/<id>` reuse the same review
+   packet, so a faculty admin can request corrections (one per line), attach a
+   message, resolve them and notify the student. The student replies from
+   `/student/corrections`, which notifies the raiser, the faculty, the Registrar
+   and the Main Admin.
+7. **Excel export** — `ExportExcelButton` + `GET /api/export/applications`
+   (`src/lib/xlsx.ts` writes a real .xlsx; faculty admins are automatically
+   scoped to their faculty). Filters: `scope=all|active|approved|rejected` and
+   `verification=<comma separated VerificationStatus list>`.
+
+## Registrar
+
+8. **Main handler** — the Registrar can do everything the Main Admin does with an
+   application: `/registrar/applications` (all faculties), verification,
+   corrections and notifications, plus `/registrar/progress`.
+9. **Informing applicants** — `/registrar/notify` sends an announcement to a
+   group (every applicant, new registrations, registered students, applicants
+   owing a correction, applicants with missing requirements) as a portal
+   notification and/or email, and lists every reachable applicant.
+10. **Decision section removed** — `/registrar/registrations/<id>` no longer
+    offers approve/reject. It shows the review packet and the presentation step;
+    the outcome is decided when the Registrar approves the presentation result
+    (`/registrar/presentations/<id>`), where a rejection can still be recorded
+    while the registration is open. Approving creates the student account, the
+    temporary password and the registration number.
+11. **Approved table** — Name, Reg No, Email, Degree, Faculty, FT/PT, Title
+    (proposal title), Contact info, Funding method, login state and a link to the
+    application, plus an Excel export of the approved scope.
+
+## Student
+
+12. **Supervisor communication** — `/student/messages` is a message box keyed by
+    `sup-<supervisorId>-app-<applicationId>`; `/student/supervisors` links
+    straight into it and keeps the email/telephone fallback when the supervisor
+    has no approved account. Supervisors answer from `/supervisor/messages`.
+    Every message raises a notification and an email.
+13. **Faculty notifications** — `/student/notifications` is the full notification
+    centre (filter by unread or category, mark read), fed by faculty admins, the
+    Registrar, the Main Admin and supervisors.
+14. **All requirements enforced** — the wizard validates the Documents step
+    (application form, CV, birth certificate, transcripts, passport photo,
+    ≥ 2 referee reports, budget, ≥ 1 payment receipt) and the physical-submission
+    acknowledgements, requires a certificate with every academic qualification,
+    and collects the funding method. `POST /api/register` enforces the same rules
+    server-side and stores each document with its requirement category. The
+    checklist shown before the form (`src/app/register/checklist.tsx`) mirrors
+    `src/lib/requirements.ts`, which is also what reviewers see.
+15. **Supervisor → Faculty → Admin** — `src/lib/progress-actions.ts`
+    (`reviewProgressStage`) drives the chain: supervisors review a report, the
+    faculty admin endorses and forwards it, the Main Admin signs off or returns it
+    to the student. Each step notifies the student, the supervisors and the next
+    stage by portal and email. `ProgressMonitor` renders the chain, highlights
+    reports needing the signed-in reviewer, and offers inline endorse/sign-off/
+    return actions; `/student/progress` shows the same chain per report.
+
+## Supervisor
+
+16. **Admin approval required** — `SupervisorProfile.approvalStatus`
+    (`PENDING` / `APPROVED` / `REJECTED`) gates the portal:
+    `src/app/(portal)/supervisor/layout.tsx` swaps the whole portal for
+    `SupervisorWaitingScreen`, `requireApprovedSupervisor()` blocks every
+    supervisor server action (reviews, presentations, messages), and the Main
+    Admin approves or rejects from `/admin/supervisors` (with a note, an in-app
+    notification and `sendSupervisorApprovalEmail`). Supervisors already in the
+    list without a login get one from the same screen; their access stays pending
+    until it is approved.

@@ -51,7 +51,6 @@ export default async function Page() {
         <Card title="Programme & personal details">
           <Field k="Full name" v={app.fullName} />
           <Field k="Faculty" v={app.faculty} />
-          <Field k="Department" v={app.department} />
           <Field k="Degree" v={app.degreeProgram} />
           <Field k="Study mode" v={app.studyMode === "FULL_TIME" ? "Full time" : app.studyMode === "PART_TIME" ? "Part time" : "—"} />
           <Field k="Start year" v={app.programStartYear ?? "—"} />

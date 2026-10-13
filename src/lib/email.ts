@@ -42,7 +42,7 @@ function getTransporter(): Transporter | null {
   return transporter;
 }
 
-async function sendEmail(data: EmailData): Promise<boolean> {
+export async function sendEmail(data: EmailData): Promise<boolean> {
   const tx = getTransporter();
   const from = process.env.EMAIL_FROM || process.env.SMTP_USER || "";
 
@@ -273,5 +273,219 @@ If you wish to reapply, please contact the Registrar's office for the next steps
     subject: "Application Status Update - Registration Rejected",
     html,
     text: text.trim(),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Generic portal correspondence
+ * ------------------------------------------------------------------ */
+
+/** Absolute portal URL used inside emails (set NEXT_PUBLIC_APP_URL). */
+function portalUrl(path = "/login"): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  return base ? `${base}${path}` : path;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export type PortalEmail = {
+  to: string;
+  /** Applicant / recipient display name. */
+  name: string;
+  subject: string;
+  heading: string;
+  /** Body paragraphs (plain text; rendered as HTML paragraphs too). */
+  paragraphs?: string[];
+  /** Bullet list rendered under the paragraphs. */
+  items?: string[];
+  /** Closing signature line, e.g. "Main Admin, Postgraduate Portal". */
+  senderLabel?: string;
+  /** Optional portal link shown as a button. */
+  ctaLabel?: string;
+  ctaPath?: string;
+};
+
+/**
+ * One template for all portal correspondence (corrections, verification
+ * results, faculty notices, message alerts…). Falls back to console logging
+ * when SMTP is not configured, exactly like the other helpers here.
+ */
+export async function sendPortalEmail(email: PortalEmail): Promise<boolean> {
+  const paragraphs = (email.paragraphs ?? [])
+    .map((p) => `<p>${escapeHtml(p)}</p>`)
+    .join("\n");
+  const items =
+    email.items && email.items.length
+      ? `<ul>${email.items
+          .map((i) => `<li>${escapeHtml(i)}</li>`)
+          .join("")}</ul>`
+      : "";
+  const cta =
+    email.ctaLabel && email.ctaPath
+      ? `<p><a href="${portalUrl(email.ctaPath)}">${escapeHtml(email.ctaLabel)}</a></p>`
+      : "";
+  const signature = email.senderLabel
+    ? `<p>— ${escapeHtml(email.senderLabel)}</p>`
+    : "";
+
+  const html = `
+    <h2>${escapeHtml(email.heading)}</h2>
+    <p>Dear ${escapeHtml(email.name)},</p>
+    ${paragraphs}
+    ${items}
+    ${cta}
+    ${signature}
+  `;
+
+  const text = [
+    email.heading,
+    "",
+    `Dear ${email.name},`,
+    "",
+    ...(email.paragraphs ?? []),
+    ...(email.items && email.items.length
+      ? ["", ...email.items.map((i) => ` - ${i}`)]
+      : []),
+    ...(email.ctaLabel && email.ctaPath
+      ? ["", `${email.ctaLabel}: ${portalUrl(email.ctaPath)}`]
+      : []),
+    ...(email.senderLabel ? ["", `— ${email.senderLabel}`] : []),
+  ].join("\n");
+
+  return sendEmail({ to: email.to, subject: email.subject, html, text: text.trim() });
+}
+
+/** Admin / Faculty Admin asked the student to correct something. */
+export async function sendCorrectionRequestEmail(input: {
+  to: string;
+  name: string;
+  items: string[];
+  message?: string | null;
+  senderLabel?: string;
+}): Promise<boolean> {
+  return sendPortalEmail({
+    to: input.to,
+    name: input.name,
+    subject: "Action Required - Corrections to Your Postgraduate Application",
+    heading: "Corrections requested on your application",
+    paragraphs: [
+      "Your application has been reviewed and the following needs to be corrected before it can be verified:",
+      ...(input.message?.trim() ? [input.message.trim()] : []),
+      "Sign in to the portal, open Corrections, upload the corrected documents and send your response.",
+    ],
+    items: input.items,
+    senderLabel: input.senderLabel ?? "Postgraduate Portal",
+    ctaLabel: "Open the portal",
+    ctaPath: "/student/corrections",
+  });
+}
+
+/** Result of the admin verification (Form of Recorrection) step. */
+export async function sendVerificationResultEmail(input: {
+  to: string;
+  name: string;
+  verified: boolean;
+  notes?: string | null;
+  senderLabel?: string;
+}): Promise<boolean> {
+  return sendPortalEmail({
+    to: input.to,
+    name: input.name,
+    subject: input.verified
+      ? "Application Information Verified"
+      : "Application Information - Verification Update",
+    heading: input.verified
+      ? "Your application information has been verified"
+      : "Update on your application verification",
+    paragraphs: [
+      input.verified
+        ? "The information you uploaded with your application has been checked and verified by the administration."
+        : "The administration has reviewed the information you uploaded with your application.",
+      ...(input.notes?.trim() ? [input.notes.trim()] : []),
+    ],
+    senderLabel: input.senderLabel ?? "Postgraduate Portal",
+    ctaLabel: "Open the portal",
+    ctaPath: "/student",
+  });
+}
+
+/** A message left for the recipient in the portal message box. */
+export async function sendMessageEmail(input: {
+  to: string;
+  recipientName: string;
+  senderName: string;
+  subject?: string | null;
+  body: string;
+  replyPath: string;
+}): Promise<boolean> {
+  return sendPortalEmail({
+    to: input.to,
+    name: input.recipientName,
+    subject: input.subject?.trim()
+      ? `Portal Message: ${input.subject.trim()}`
+      : "New message in your portal inbox",
+    heading: `Message from ${input.senderName}`,
+    paragraphs: [input.body],
+    senderLabel: input.senderName,
+    ctaLabel: "Reply in the portal",
+    ctaPath: input.replyPath,
+  });
+}
+
+/** Supervisor account approved (or not) by the Main Admin. */
+export async function sendSupervisorApprovalEmail(input: {
+  to: string;
+  name: string;
+  approved: boolean;
+  note?: string | null;
+}): Promise<boolean> {
+  return sendPortalEmail({
+    to: input.to,
+    name: input.name,
+    subject: input.approved
+      ? "Supervisor Portal Access Approved"
+      : "Supervisor Portal Access - Not Approved",
+    heading: input.approved
+      ? "Your supervisor portal access has been approved"
+      : "Your supervisor portal access was not approved",
+    paragraphs: [
+      input.approved
+        ? "The Main Admin has approved your account. You can now sign in to the Supervisor portal to review your students' progress reports and presentations."
+        : "The Main Admin has not approved your supervisor portal account yet.",
+      ...(input.note?.trim() ? [input.note.trim()] : []),
+    ],
+    senderLabel: "Main Admin, Postgraduate Portal",
+    ctaLabel: input.approved ? "Sign in" : undefined,
+    ctaPath: input.approved ? "/login" : undefined,
+  });
+}
+
+/** A progress report moved to the next stage of the review chain. */
+export async function sendProgressEscalationEmail(input: {
+  to: string;
+  name: string;
+  studentName: string;
+  reportTitle: string;
+  stage: string;
+  action: string;
+}): Promise<boolean> {
+  return sendPortalEmail({
+    to: input.to,
+    name: input.name,
+    subject: `Progress Report Awaiting ${input.stage} Review`,
+    heading: `Progress report awaiting ${input.stage.toLowerCase()} review`,
+    paragraphs: [
+      `${input.studentName}'s progress report "${input.reportTitle}" has cleared the previous stage.`,
+      input.action,
+    ],
+    senderLabel: "Postgraduate Portal",
+    ctaLabel: "Open progress review",
+    ctaPath: "/login",
   });
 }

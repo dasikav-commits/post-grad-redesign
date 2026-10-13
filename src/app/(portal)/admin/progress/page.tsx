@@ -7,15 +7,16 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminProgressPage() {
   await requireRole("MAIN_ADMIN");
-  const students = await getStudentProgressOverview();
+  // Progress is only tracked once a student's registration has been completed.
+  const students = await getStudentProgressOverview(null, true);
 
   return (
     <>
       <PageHeader
         title="Student Progress"
-        subtitle="All faculties — presentations and progress reports, student by student."
+        subtitle="Registered students only — final sign-off of the Supervisor → Faculty → Admin progress chain."
       />
-      <ProgressMonitor students={students} showFaculty />
+      <ProgressMonitor students={students} showFaculty reviewStage="ADMIN" />
     </>
   );
 }

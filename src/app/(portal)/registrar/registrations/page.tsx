@@ -1,14 +1,19 @@
-import Link from "next/link";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
+import { getApplicationSummaries } from "@/lib/application-summary";
 import { PageHeader } from "@/components/page-header";
+import {
+  ApplicationsTable,
+  ExportExcelButton,
+  type AppRow,
+} from "@/components/applications-table";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   await requireRole("REGISTRAR");
 
-  // New registrations awaiting the registrar's decision = status ACTIVE.
+  // New registrations awaiting review = status ACTIVE.
   const apps = await prisma.applicationPostGraduate.findMany({
     where: { status: "ACTIVE" },
     orderBy: { registrationDate: "asc" },
@@ -18,57 +23,47 @@ export default async function Page() {
       nic: true,
       faculty: true,
       degreeProgram: true,
+      status: true,
       registrationDate: true,
+      verificationStatus: true,
     },
+  });
+
+  const summaries = await getApplicationSummaries(
+    apps.map((a: { id: number }) => a.id),
+  );
+
+  const rows: AppRow[] = apps.map((a) => {
+    const s = summaries.get(a.id);
+    return {
+      id: a.id,
+      fullName: a.fullName,
+      nic: a.nic,
+      faculty: a.faculty,
+      degreeProgram: a.degreeProgram,
+      status: a.status,
+      registrationDate: a.registrationDate,
+      verificationStatus: a.verificationStatus,
+      requirementsMet: s?.requirementsMet ?? null,
+      requirementsTotal: s?.requirementsTotal ?? null,
+      openCorrections: s?.openCorrections ?? 0,
+    };
   });
 
   return (
     <>
       <PageHeader
         title="New Registrations"
-        subtitle="Applications awaiting your review. Open one to approve or reject."
+        subtitle="Applications awaiting review. Open one to check the requirements, verify the information and inform the student — the outcome is decided at the presentation review."
       />
-      {apps.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-white p-8 text-center text-sm text-neutral-500">
-          No new registrations to review.
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted text-xs uppercase tracking-wide text-neutral-500">
-              <tr>
-                <th className="px-4 py-2 font-semibold">Applicant</th>
-                <th className="px-4 py-2 font-semibold">NIC</th>
-                <th className="px-4 py-2 font-semibold">Faculty</th>
-                <th className="px-4 py-2 font-semibold">Degree</th>
-                <th className="px-4 py-2 font-semibold">Submitted</th>
-                <th className="px-4 py-2 font-semibold"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {apps.map((a) => (
-                <tr key={a.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2 font-medium text-black">{a.fullName}</td>
-                  <td className="px-4 py-2 text-neutral-600">{a.nic}</td>
-                  <td className="px-4 py-2 text-neutral-600">{a.faculty ?? "—"}</td>
-                  <td className="px-4 py-2 text-neutral-600">{a.degreeProgram ?? "—"}</td>
-                  <td className="px-4 py-2 text-neutral-600">
-                    {a.registrationDate.toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Link
-                      href={`/registrar/registrations/${a.id}`}
-                      className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark"
-                    >
-                      Review
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <ApplicationsTable
+        rows={rows}
+        emptyMessage="No new registrations to review."
+        showDetailLink
+        showVerification
+        detailBase="/registrar/registrations"
+        toolbar={<ExportExcelButton href="/api/export/applications?scope=active" />}
+      />
     </>
   );
 }

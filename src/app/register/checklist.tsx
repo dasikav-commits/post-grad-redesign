@@ -1,89 +1,119 @@
-const ITEMS: { n: number; title: string; mode: "Upload" | "Physical"; note: string }[] =
-  [
-    {
-      n: 1,
-      title: "Completed Application Form with Signature",
-      mode: "Physical",
-      note: "Physical submission only.",
-    },
-    {
-      n: 2,
-      title: "Complete Curriculum Vitae (CV)",
-      mode: "Upload",
-      note: "Online and physical. Student's CV and each supervisor's CV.",
-    },
-    {
-      n: 3,
-      title: "Certified Copy of the Birth Certificate",
-      mode: "Upload",
-      note: "Online and physical submission.",
-    },
-    {
-      n: 4,
-      title: "Certified Copies of Educational Certificates",
-      mode: "Upload",
-      note: "Attach to each Academic Qualification.",
-    },
-    {
-      n: 5,
-      title: "Certified Copies of Professional Qualification Certificates",
-      mode: "Upload",
-      note: "Attach to each Professional Qualification.",
-    },
-    {
-      n: 6,
-      title: "Academic Transcripts",
-      mode: "Upload",
-      note: "Online and physical submission.",
-    },
-    {
-      n: 7,
-      title: "Two (02) Copies of Research Proposal Signed by Supervisors",
-      mode: "Physical",
-      note: "Physical submission only.",
-    },
-    {
-      n: 8,
-      title: "Two (02) Referee Reports",
-      mode: "Upload",
-      note: "Online and physical. One or more files.",
-    },
-    {
-      n: 9,
-      title: "Proposed Budget + Evidence of Funding / Financial Support",
-      mode: "Upload",
-      note: "Online and physical. One or more files.",
-    },
-    {
-      n: 10,
-      title: "Three (03) Passport-size Colour Photographs",
-      mode: "Physical",
-      note: "Physical submission only.",
-    },
-    {
-      n: 11,
-      title: "Receipts of Relevant Payments (incl. Application Lodging Fee)",
-      mode: "Physical",
-      note: "Physical submission only.",
-    },
-    {
-      n: 12,
-      title: "Work Experience Letters",
-      mode: "Upload",
-      note: "Attach to each Work Experience.",
-    },
-  ];
+/**
+ * Registration requirements, mirroring `src/lib/requirements.ts` so what the
+ * applicant is told up front is exactly what the reviewers check afterwards.
+ */
+const ITEMS: {
+  n: number;
+  title: string;
+  mode: "Upload" | "Upload + Physical";
+  where: string;
+  note: string;
+}[] = [
+  {
+    n: 1,
+    title: "Completed Application Form (signed)",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Upload the signed form; the original is handed over in person.",
+  },
+  {
+    n: 2,
+    title: "Curriculum Vitae (CV)",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Your complete CV.",
+  },
+  {
+    n: 3,
+    title: "Birth Certificate",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Certified copy.",
+  },
+  {
+    n: 4,
+    title: "Educational Certificates",
+    mode: "Upload",
+    where: "Step 2 — Academic Qualifications",
+    note: "Certified copy attached to every qualification you list.",
+  },
+  {
+    n: 5,
+    title: "Professional Qualifications",
+    mode: "Upload",
+    where: "Step 4 — Professional Experience",
+    note: "Certified copy of each professional certificate.",
+  },
+  {
+    n: 6,
+    title: "Academic Transcripts",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Complete transcripts.",
+  },
+  {
+    n: 7,
+    title: "Research Proposal",
+    mode: "Upload + Physical",
+    where: "Step 6 — Proposal & Supervisors",
+    note: "Signed proposal as a PDF; two copies handed over in person.",
+  },
+  {
+    n: 8,
+    title: "Proposed Supervisors",
+    mode: "Upload",
+    where: "Step 6 — Proposal & Supervisors",
+    note: "1 – 5 supervisors, exactly one marked as main.",
+  },
+  {
+    n: 9,
+    title: "Supervisors' CVs",
+    mode: "Upload",
+    where: "Step 6 — Proposal & Supervisors",
+    note: "CV plus a willingness-to-supervise document for each supervisor.",
+  },
+  {
+    n: 10,
+    title: "Referee Reports",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Two (02) reports minimum.",
+  },
+  {
+    n: 11,
+    title: "Proposed Budget / Funding Evidence",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Budget plus evidence of funding or financial support.",
+  },
+  {
+    n: 12,
+    title: "Passport-size Photograph",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Colour photograph; three copies handed over in person.",
+  },
+  {
+    n: 13,
+    title: "Payment Receipts",
+    mode: "Upload + Physical",
+    where: "Step 5 — Documents",
+    note: "Relevant payments including the application lodging fee.",
+  },
+];
 
 export function Checklist() {
   return (
     <section className="mb-8 rounded-lg border border-brand bg-white p-6">
-      <h2 className="text-lg font-bold text-black">Application checklist</h2>
+      <h2 className="text-lg font-bold text-black">
+        Registration requirements — all 13 must be met
+      </h2>
       <p className="mt-1 text-sm text-neutral-600">
-        Before you begin, make sure you have the following ready. Items marked{" "}
-        <strong>Upload</strong> are submitted online in this form; items marked{" "}
-        <strong>Physical</strong> are handed over in person and you simply
-        acknowledge them here. Your signed research proposal is submitted online
-        too.
+        The wizard will not let you submit until every item below is provided.
+        Items marked <strong>Upload + Physical</strong> are submitted online here
+        and also handed over in person — you acknowledge those at the end of the
+        Documents step. Your progress against this list stays visible in the
+        student portal under <strong>Requirements</strong>.
       </p>
       <ul className="mt-4 grid gap-2 sm:grid-cols-2">
         {ITEMS.map((it) => (
@@ -106,7 +136,7 @@ export function Checklist() {
                 >
                   {it.mode}
                 </span>
-                {it.note}
+                {it.where} — {it.note}
               </p>
             </div>
           </li>

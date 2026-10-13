@@ -20,6 +20,9 @@ export default async function SupervisorsPage() {
         facultyId: true,
         facultyRef: { select: { name: true } },
         userId: true,
+        approvalStatus: true,
+        approvalNote: true,
+        approvedAt: true,
         user: { select: { email: true, initialPassword: true, mustChangePassword: true } },
         _count: { select: { proposals: true } },
       },
@@ -36,6 +39,9 @@ export default async function SupervisorsPage() {
     facultyId: s.facultyId,
     facultyName: s.facultyRef?.name ?? null,
     hasAccount: s.userId != null,
+    approvalStatus: s.approvalStatus,
+    approvalNote: s.approvalNote,
+    approvedAt: s.approvedAt,
     email: s.user?.email,
     initialPassword: s.user?.initialPassword,
     mustChangePassword: s.user?.mustChangePassword,
@@ -46,7 +52,7 @@ export default async function SupervisorsPage() {
     <>
       <PageHeader
         title="Supervisors"
-        subtitle="Maintain the list of supervisors students can select in the research-proposal step of registration."
+        subtitle="Maintain the list of supervisors students can select during registration, and approve their portal access."
       />
       <SupervisorManager supervisors={rows} faculties={faculties} />
     </>

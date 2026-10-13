@@ -10,17 +10,20 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function RegisterPage() {
-  const [faculties, supervisors] = await Promise.all([
+  const [rawFaculties, supervisors] = await Promise.all([
     prisma.faculty.findMany({
       orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
-        departments: {
+        // Degrees hang directly off the faculty now (departments were removed).
+        degrees: {
           orderBy: { name: "asc" },
+          select: { id: true, name: true, level: true, type: true, studyModes: true },
+        },
+        // Legacy degrees that still only carry a department link.
+        departments: {
           select: {
-            id: true,
-            name: true,
             degrees: {
               orderBy: { name: "asc" },
               select: { id: true, name: true, level: true, type: true, studyModes: true },
@@ -34,6 +37,17 @@ export default async function RegisterPage() {
       select: { id: true, name: true, title: true, university: true, facultyId: true },
     }),
   ]);
+
+  const faculties: FacultyNode[] = rawFaculties.map((f) => {
+    const legacy = f.departments.flatMap((d) => d.degrees);
+    const byId = new Map<number, FacultyNode["degrees"][number]>();
+    for (const d of [...f.degrees, ...legacy]) byId.set(d.id, d);
+    return {
+      id: f.id,
+      name: f.name,
+      degrees: [...byId.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  });
 
   const supervisorOptions: SupervisorOption[] = supervisors.map((s) => ({
     id: s.id,
@@ -71,7 +85,7 @@ export default async function RegisterPage() {
           </div>
         ) : (
           <RegistrationWizard
-            faculties={faculties as FacultyNode[]}
+            faculties={faculties}
             supervisorOptions={supervisorOptions}
           />
         )}

@@ -52,13 +52,24 @@ export async function deleteFaculty(form: FormData): Promise<ActionResult> {
   await requireRole("MAIN_ADMIN");
   const id = Number(form.get("id"));
   if (!id) return { ok: false, error: "Invalid faculty." };
+
+  const degreeCount = await prisma.degreeSought.count({
+    where: { OR: [{ facultyId: id }, { departmentRef: { facultyId: id } }] },
+  });
+  if (degreeCount > 0) {
+    return {
+      ok: false,
+      error: "Remove its degrees first before deleting this faculty.",
+    };
+  }
+
   try {
     await prisma.faculty.delete({ where: { id } });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
       return {
         ok: false,
-        error: "Remove its departments first before deleting this faculty.",
+        error: "Remove its degrees first before deleting this faculty.",
       };
     }
     return { ok: false, error: "Could not delete faculty." };
@@ -67,55 +78,21 @@ export async function deleteFaculty(form: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
-// ---- Department ----------------------------------------------------------
-
-export async function createDepartment(form: FormData): Promise<ActionResult> {
-  await requireRole("MAIN_ADMIN");
-  const facultyId = Number(form.get("facultyId"));
-  const name = str(form, "name");
-  if (!facultyId || !name)
-    return { ok: false, error: "Department name is required." };
-  try {
-    await prisma.department.create({ data: { name, facultyId } });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      return {
-        ok: false,
-        error: "That department already exists in this faculty.",
-      };
-    }
-    return { ok: false, error: "Could not create department." };
-  }
-  revalidatePath("/admin/structure");
-  return { ok: true };
-}
-
-export async function deleteDepartment(form: FormData): Promise<ActionResult> {
-  await requireRole("MAIN_ADMIN");
-  const id = Number(form.get("id"));
-  if (!id) return { ok: false, error: "Invalid department." };
-  try {
-    await prisma.department.delete({ where: { id } });
-  } catch {
-    return { ok: false, error: "Could not delete department." };
-  }
-  revalidatePath("/admin/structure");
-  return { ok: true };
-}
-
 // ---- Degree --------------------------------------------------------------
+//
+// Degrees belong to a faculty. The department layer is no longer part of the
+// structure manager (or of registration), so it is not required here.
 
 export async function createDegree(form: FormData): Promise<ActionResult> {
   await requireRole("MAIN_ADMIN");
-  const departmentId = Number(form.get("departmentId"));
+  const facultyId = Number(form.get("facultyId"));
   const name = str(form, "name");
   const type = str(form, "type") || null;
   const levelRaw = str(form, "level");
   const level = (LEVELS.includes(levelRaw as DegreeLevel)
     ? levelRaw
     : "OTHER") as DegreeLevel;
-  if (!departmentId || !name)
-    return { ok: false, error: "Degree name is required." };
+  if (!facultyId || !name) return { ok: false, error: "Degree name is required." };
 
   const studyModes: StudyMode[] = [];
   if (form.get("fullTime")) studyModes.push("FULL_TIME");
@@ -123,11 +100,8 @@ export async function createDegree(form: FormData): Promise<ActionResult> {
   if (studyModes.length === 0)
     return { ok: false, error: "Select at least one study mode (Full time / Part time)." };
 
-  const dept = await prisma.department.findUnique({
-    where: { id: departmentId },
-    include: { faculty: true },
-  });
-  if (!dept) return { ok: false, error: "Department not found." };
+  const faculty = await prisma.faculty.findUnique({ where: { id: facultyId } });
+  if (!faculty) return { ok: false, error: "Faculty not found." };
 
   try {
     await prisma.degreeSought.create({
@@ -136,15 +110,15 @@ export async function createDegree(form: FormData): Promise<ActionResult> {
         type,
         level,
         studyModes,
-        departmentId,
-        department: dept.name,
-        faculty: dept.faculty.name,
+        facultyId,
+        faculty: faculty.name,
       },
     });
   } catch {
     return { ok: false, error: "Could not create degree." };
   }
   revalidatePath("/admin/structure");
+  revalidatePath("/register");
   return { ok: true };
 }
 

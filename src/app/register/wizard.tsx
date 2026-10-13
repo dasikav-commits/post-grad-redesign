@@ -17,8 +17,32 @@ type DegreeNode = {
 };
 
 const ENGLISH_LEVELS = ["Excellent", "Good", "Average", "Weak"];
-type DeptNode = { id: number; name: string; degrees: DegreeNode[] };
-export type FacultyNode = { id: number; name: string; departments: DeptNode[] };
+// Degrees sit directly under a faculty — the department layer was removed.
+export type FacultyNode = { id: number; name: string; degrees: DegreeNode[] };
+
+type FundingVal =
+  | ""
+  | "SELF_FUNDED"
+  | "EMPLOYER_SPONSORED"
+  | "UNIVERSITY_GRANT"
+  | "EXTERNAL_SCHOLARSHIP"
+  | "OTHER";
+
+const FUNDING_OPTIONS: { value: Exclude<FundingVal, "">; label: string }[] = [
+  { value: "SELF_FUNDED", label: "Self-funded" },
+  { value: "EMPLOYER_SPONSORED", label: "Employer sponsored" },
+  { value: "UNIVERSITY_GRANT", label: "University grant" },
+  { value: "EXTERNAL_SCHOLARSHIP", label: "External scholarship" },
+  { value: "OTHER", label: "Other" },
+];
+
+// Physical items the applicant must hand over; ticking them is compulsory.
+const ACK_ITEMS = [
+  ["applicationForm", "Completed Application Form with signature"],
+  ["signedProposal", "Two (02) copies of research proposal signed by supervisors"],
+  ["photographs", "Three (03) passport-size colour photographs"],
+  ["paymentReceipts", "Receipts of relevant payments (incl. application lodging fee)"],
+] as const;
 
 type Contact = { type: "MOBILE" | "RESIDENTIAL" | "OFFICE" | "MOBILE_OFFICE"; value: string };
 type Academic = {
@@ -44,18 +68,21 @@ type Supervisor = {
 };
 
 type Form = {
-  facultyId: number | null; departmentId: number | null; degreeId: number | null;
+  facultyId: number | null; degreeId: number | null;
   fullName: string; nameWithInitials: string; nic: string; dateOfBirth: string;
   maritalStatus: "" | "SINGLE" | "MARRIED"; email: string;
   studyMode: "" | "FULL_TIME" | "PART_TIME";
+  fundingMethod: FundingVal; fundingDetails: string;
   englishProficiency: string; residentialAddress: string; officialAddress: string;
   contacts: Contact[];
   academics: Academic[];
   works: Work[];
   professionals: Professional[];
   documents: {
+    applicationForm: UploadedRef | null;
     cv: UploadedRef | null; birthCertificate: UploadedRef | null; transcript: UploadedRef | null;
-    referees: UploadedRef[]; budgets: UploadedRef[];
+    photo: UploadedRef | null;
+    referees: UploadedRef[]; budgets: UploadedRef[]; paymentReceipts: UploadedRef[];
   };
   ack: { applicationForm: boolean; signedProposal: boolean; photographs: boolean; paymentReceipts: boolean };
   proposal: { title: string; objectives: string; file: UploadedRef | null };
@@ -80,15 +107,19 @@ const emptyWork = (): Work => ({ organization: "", positionHeld: "", periodFrom:
 const emptyProf = (): Professional => ({ institution: "", fieldOfStudy: "", periodFrom: "", periodTo: "", file: null });
 
 const initialForm: Form = {
-  facultyId: null, departmentId: null, degreeId: null,
+  facultyId: null, degreeId: null,
   fullName: "", nameWithInitials: "", nic: "", dateOfBirth: "",
   maritalStatus: "", email: "", studyMode: "",
+  fundingMethod: "", fundingDetails: "",
   englishProficiency: "", residentialAddress: "", officialAddress: "",
   contacts: [{ type: "MOBILE", value: "" }],
   academics: [emptyAcademic()],
   works: [],
   professionals: [],
-  documents: { cv: null, birthCertificate: null, transcript: null, referees: [], budgets: [] },
+  documents: {
+    applicationForm: null, cv: null, birthCertificate: null, transcript: null, photo: null,
+    referees: [], budgets: [], paymentReceipts: [],
+  },
   ack: { applicationForm: false, signedProposal: false, photographs: false, paymentReceipts: false },
   proposal: { title: "", objectives: "", file: null },
   supervisors: [{ supervisorId: null, isMain: true, cv: null, consent: null }],
@@ -114,13 +145,9 @@ export function RegistrationWizard({
 
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
 
-  const departments = useMemo(
-    () => faculties.find((f) => f.id === form.facultyId)?.departments ?? [],
-    [faculties, form.facultyId],
-  );
   const degrees = useMemo(
-    () => departments.find((d) => d.id === form.departmentId)?.degrees ?? [],
-    [departments, form.departmentId],
+    () => faculties.find((f) => f.id === form.facultyId)?.degrees ?? [],
+    [faculties, form.facultyId],
   );
   const selectedDegree = degrees.find((d) => d.id === form.degreeId) ?? null;
 
@@ -135,14 +162,17 @@ export function RegistrationWizard({
 
   function validateStep(s: number): string | null {
     if (s === 0) {
-      if (!form.facultyId || !form.departmentId || !form.degreeId)
-        return "Select faculty, department and degree.";
+      if (!form.facultyId || !form.degreeId)
+        return "Select a faculty and a degree.";
       if (!form.fullName.trim() || !form.nameWithInitials.trim())
         return "Full name and name with initials are required.";
       if (!form.nic.trim()) return "NIC is required.";
       if (!form.dateOfBirth) return "Date of birth is required.";
       if (!form.email.trim()) return "Email is required.";
       if (!form.studyMode) return "Select a study mode.";
+      if (!form.fundingMethod) return "Select how the programme is funded.";
+      if (form.fundingMethod === "OTHER" && !form.fundingDetails.trim())
+        return "Describe the funding method.";
       if (!form.contacts.some((c) => c.value.trim()))
         return "Provide at least one contact number.";
     }
@@ -151,6 +181,8 @@ export function RegistrationWizard({
       for (const a of form.academics) {
         if (!a.university.trim() || !a.degreeName.trim())
           return "University and degree name are required for each qualification.";
+        if (!a.file)
+          return "Upload the educational certificate for each academic qualification.";
       }
     }
     if (s === 2) {
@@ -162,6 +194,25 @@ export function RegistrationWizard({
       for (const p of form.professionals)
         if (!p.institution.trim())
           return "Institution is required for each professional qualification.";
+    }
+    if (s === 4) {
+      const doc = form.documents;
+      if (!doc.applicationForm) return "Upload the completed application form.";
+      if (!doc.cv) return "Upload your Curriculum Vitae (CV).";
+      if (!doc.birthCertificate)
+        return "Upload a certified copy of your birth certificate.";
+      if (!doc.transcript) return "Upload your academic transcripts.";
+      if (!doc.photo) return "Upload a passport-size photograph.";
+      if (doc.referees.length < 2)
+        return "Upload at least two (02) referee reports.";
+      if (doc.budgets.length < 1) return "Upload the proposed budget.";
+      if (doc.paymentReceipts.length < 1)
+        return "Upload at least one payment receipt.";
+      const missingAck = ACK_ITEMS.filter(([key]) => !form.ack[key]).map(
+        ([, text]) => text,
+      );
+      if (missingAck.length > 0)
+        return `Acknowledge the physical submissions: ${missingAck.join("; ")}.`;
     }
     if (s === 5) {
       if (!form.proposal.title.trim()) return "Proposal title is required.";
@@ -214,11 +265,14 @@ export function RegistrationWizard({
     setError(null);
     try {
       const payload = {
-        facultyId: form.facultyId, departmentId: form.departmentId, degreeId: form.degreeId,
+        facultyId: form.facultyId, degreeId: form.degreeId,
         fullName: form.fullName.trim(), nameWithInitials: form.nameWithInitials.trim(),
         nic: form.nic.trim(), dateOfBirth: form.dateOfBirth,
         maritalStatus: form.maritalStatus || null, email: form.email.trim(),
-        studyMode: form.studyMode, englishProficiency: form.englishProficiency.trim() || null,
+        studyMode: form.studyMode,
+        fundingMethod: form.fundingMethod || null,
+        fundingDetails: form.fundingDetails.trim() || null,
+        englishProficiency: form.englishProficiency.trim() || null,
         residentialAddress: form.residentialAddress.trim() || null,
         officialAddress: form.officialAddress.trim() || null,
         contacts: form.contacts.filter((c) => c.value.trim()),
@@ -271,7 +325,7 @@ export function RegistrationWizard({
         {step === 0 && (
           <StepPersonal
             form={form} set={set} faculties={faculties}
-            departments={departments} degrees={degrees} selectedDegree={selectedDegree}
+            degrees={degrees} selectedDegree={selectedDegree}
           />
         )}
         {step === 1 && <StepAcademics form={form} set={set} />}
@@ -330,27 +384,26 @@ export function RegistrationWizard({
 // ---- Step 0: Programme & Personal ---------------------------------------
 
 function StepPersonal({
-  form, set, faculties, departments, degrees, selectedDegree,
+  form, set, faculties, degrees, selectedDegree,
 }: {
   form: Form; set: (p: Partial<Form>) => void; faculties: FacultyNode[];
-  departments: DeptNode[]; degrees: DegreeNode[]; selectedDegree: DegreeNode | null;
+  degrees: DegreeNode[]; selectedDegree: DegreeNode | null;
 }) {
   return (
     <div className="space-y-4">
       <div className={card}>
         <h3 className="mb-3 text-base font-bold text-black">Programme</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className={label}>Faculty</label>
             <select
               className={input}
               value={form.facultyId ?? ""}
               onChange={(e) =>
-                // Reset dependent selections, incl. supervisors, since the
-                // available supervisor list is faculty-specific.
+                // Reset dependent selections, incl. supervisors, since both the
+                // degree list and the supervisor list are faculty-specific.
                 set({
                   facultyId: Number(e.target.value) || null,
-                  departmentId: null,
                   degreeId: null,
                   supervisors: [{ supervisorId: null, isMain: true, cv: null, consent: null }],
                 })
@@ -363,31 +416,19 @@ function StepPersonal({
             </select>
           </div>
           <div>
-            <label className={label}>Department</label>
-            <select
-              className={input}
-              value={form.departmentId ?? ""}
-              disabled={!form.facultyId}
-              onChange={(e) => set({ departmentId: Number(e.target.value) || null, degreeId: null })}
-            >
-              <option value="">Select department…</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className={label}>Degree sought</label>
             <select
               className={input}
               value={form.degreeId ?? ""}
-              disabled={!form.departmentId}
+              disabled={!form.facultyId}
               onChange={(e) =>
                 // Reset study mode: the allowed modes depend on the chosen degree.
                 set({ degreeId: Number(e.target.value) || null, studyMode: "" })
               }
             >
-              <option value="">Select degree…</option>
+              <option value="">
+                {form.facultyId ? "Select degree…" : "Select a faculty first"}
+              </option>
               {degrees.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
@@ -423,6 +464,36 @@ function StepPersonal({
                 </strong>
               </p>
             )}
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className={label}>Funding method</label>
+            <select
+              className={input}
+              value={form.fundingMethod}
+              onChange={(e) => set({ fundingMethod: e.target.value as FundingVal })}
+            >
+              <option value="">Select funding method…</option>
+              {FUNDING_OPTIONS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={label}>
+              Funding details{form.fundingMethod === "OTHER" ? " *" : " (optional)"}
+            </label>
+            <input
+              className={input}
+              value={form.fundingDetails}
+              placeholder={
+                form.fundingMethod === "OTHER"
+                  ? "Describe how the programme is funded"
+                  : "Sponsor, grant reference, scholarship name…"
+              }
+              onChange={(e) => set({ fundingDetails: e.target.value })}
+            />
           </div>
         </div>
       </div>
@@ -708,26 +779,30 @@ function StepDocuments({ form, set }: { form: Form; set: (p: Partial<Form>) => v
     <div className="space-y-4">
       <div className={card}>
         <h3 className="mb-3 text-base font-bold text-black">Uploads</h3>
+        <p className="mb-3 text-xs text-neutral-500">
+          Every item below is required. Educational certificates are uploaded with
+          each qualification (step 2), professional qualifications with each
+          entry (step 4), and the research proposal with the supervisors&apos; CVs
+          (step 6).
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <FileField label="Curriculum Vitae (CV)" folder="cv" value={doc.cv} onChange={(f) => setDoc({ cv: f })} />
-          <FileField label="Certified copy of Birth Certificate" folder="birth-certificate" value={doc.birthCertificate} onChange={(f) => setDoc({ birthCertificate: f })} />
-          <FileField label="Academic Transcripts" folder="transcript" value={doc.transcript} onChange={(f) => setDoc({ transcript: f })} />
+          <FileField label="Completed Application Form *" folder="application-form" value={doc.applicationForm} onChange={(f) => setDoc({ applicationForm: f })} />
+          <FileField label="Curriculum Vitae (CV) *" folder="cv" value={doc.cv} onChange={(f) => setDoc({ cv: f })} />
+          <FileField label="Certified copy of Birth Certificate *" folder="birth-certificate" value={doc.birthCertificate} onChange={(f) => setDoc({ birthCertificate: f })} />
+          <FileField label="Academic Transcripts *" folder="transcript" value={doc.transcript} onChange={(f) => setDoc({ transcript: f })} />
+          <FileField label="Passport-size photograph *" folder="photo" accept="image/*,.pdf" value={doc.photo} onChange={(f) => setDoc({ photo: f })} />
         </div>
       </div>
 
-      <MultiFile label="Referee Reports (one or more)" folder="referee" files={doc.referees} onChange={(referees) => setDoc({ referees })} />
-      <MultiFile label="Proposed Budget + Funding Evidence (one or more)" folder="budget" files={doc.budgets} onChange={(budgets) => setDoc({ budgets })} />
+      <MultiFile label="Referee Reports (at least two) *" folder="referee" files={doc.referees} onChange={(referees) => setDoc({ referees })} />
+      <MultiFile label="Proposed Budget + Funding Evidence *" folder="budget" files={doc.budgets} onChange={(budgets) => setDoc({ budgets })} />
+      <MultiFile label="Payment Receipts (incl. application lodging fee) *" folder="payment-receipt" files={doc.paymentReceipts} onChange={(paymentReceipts) => setDoc({ paymentReceipts })} />
 
       <div className={card}>
         <h3 className="mb-2 text-base font-bold text-black">Physical submissions — acknowledge</h3>
         <p className="mb-3 text-xs text-neutral-500">These are handed over in person. Tick to confirm you will submit them.</p>
         <div className="space-y-2 text-sm">
-          {([
-            ["applicationForm", "Completed Application Form with signature"],
-            ["signedProposal", "Two (02) copies of research proposal signed by supervisors"],
-            ["photographs", "Three (03) passport-size colour photographs"],
-            ["paymentReceipts", "Receipts of relevant payments (incl. application lodging fee)"],
-          ] as const).map(([key, text]) => (
+          {ACK_ITEMS.map(([key, text]) => (
             <label key={key} className="flex items-start gap-2">
               <input type="checkbox" className="mt-1" checked={ack[key]} onChange={(e) => setAck({ [key]: e.target.checked })} />
               <span className="text-black">{text}</span>
@@ -869,7 +944,8 @@ function StepReview({ form, faculties, selectedDegree, supervisorOptions }: {
   supervisorOptions: SupervisorOption[];
 }) {
   const faculty = faculties.find((f) => f.id === form.facultyId);
-  const dept = faculty?.departments.find((d) => d.id === form.departmentId);
+  const fundingLabel =
+    FUNDING_OPTIONS.find((f) => f.value === form.fundingMethod)?.label ?? "";
   const nameOf = (id: number | null) =>
     supervisorOptions.find((o) => o.id === id)?.name ?? "";
   const main = form.supervisors.find((s) => s.isMain);
@@ -879,9 +955,10 @@ function StepReview({ form, faculties, selectedDegree, supervisorOptions }: {
       <div className={card}>
         <h3 className="mb-2 text-base font-bold text-black">Programme & Personal</h3>
         <Row k="Faculty" v={faculty?.name} />
-        <Row k="Department" v={dept?.name} />
         <Row k="Degree" v={selectedDegree?.name} />
         <Row k="Study mode" v={form.studyMode === "FULL_TIME" ? "Full time" : form.studyMode === "PART_TIME" ? "Part time" : ""} />
+        <Row k="Funding method" v={fundingLabel} />
+        <Row k="Funding details" v={form.fundingDetails} />
         <Row k="Full name" v={form.fullName} />
         <Row k="Name with initials" v={form.nameWithInitials} />
         <Row k="NIC" v={form.nic} />
@@ -894,6 +971,20 @@ function StepReview({ form, faculties, selectedDegree, supervisorOptions }: {
         <Row k="Academic qualifications" v={`${form.academics.length}`} />
         <Row k="Work experience" v={`${form.works.length}`} />
         <Row k="Professional qualifications" v={`${form.professionals.length}`} />
+      </div>
+      <div className={card}>
+        <h3 className="mb-2 text-base font-bold text-black">Documents</h3>
+        <Row k="Application form" v={form.documents.applicationForm?.fileName} />
+        <Row k="CV" v={form.documents.cv?.fileName} />
+        <Row k="Birth certificate" v={form.documents.birthCertificate?.fileName} />
+        <Row k="Transcripts" v={form.documents.transcript?.fileName} />
+        <Row k="Photograph" v={form.documents.photo?.fileName} />
+        <Row k="Educational certificates" v={`${form.academics.filter((a) => a.file).length}/${form.academics.length}`} />
+        <Row k="Professional qualifications" v={`${form.professionals.filter((p) => p.file).length}/${form.professionals.length}`} />
+        <Row k="Referee reports" v={`${form.documents.referees.length}`} />
+        <Row k="Budget" v={`${form.documents.budgets.length}`} />
+        <Row k="Payment receipts" v={`${form.documents.paymentReceipts.length}`} />
+        <Row k="Physical submissions acknowledged" v={ACK_ITEMS.every(([k]) => form.ack[k]) ? "Yes" : "No"} />
       </div>
       <div className={card}>
         <h3 className="mb-2 text-base font-bold text-black">Proposal & Supervisors</h3>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireRole } from "@/lib/guard";
+import { requireRole, requireApprovedSupervisor } from "@/lib/guard";
 import { hashPassword } from "@/lib/auth";
 import { nextUserCode } from "@/lib/user-code";
 import {
@@ -10,6 +10,8 @@ import {
   sendPresentationApprovedNotification,
   sendStudentApprovalNotification,
 } from "@/lib/email";
+import { nextRegistrationNumber } from "@/lib/registration-number";
+import { notifyFacultyAdmins, notifyRole } from "@/lib/notify";
 
 export type AssignPresentationResult = 
   | { ok: true; presentationId: number }
@@ -125,7 +127,10 @@ export async function assignPresentationDate(
 export async function markPresentationComplete(
   presentationId: number,
 ): Promise<MarkPresentationCompleteResult> {
-  const session = await requireRole("SUPERVISOR");
+  // Called by the supervisor: portal access must be approved by the Main Admin.
+  const gate = await requireApprovedSupervisor();
+  if (!gate.ok) return gate;
+  const { session } = gate;
 
   const presentation = await prisma.presentation.findUnique({
     where: { id: presentationId },
@@ -190,6 +195,9 @@ export async function approvePresentationResult(
               status: true,
               userId: true,
               fullName: true,
+              faculty: true,
+              registrationDate: true,
+              registrationNumber: true,
               emails: true,
             },
           },
@@ -210,6 +218,10 @@ export async function approvePresentationResult(
   }
 
   let generatedPassword: string | null = null;
+  // Completing the presentation completes the registration: hand out the Reg No.
+  const registrationNumber =
+    application.registrationNumber ??
+    (await nextRegistrationNumber(application.registrationDate));
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -235,12 +247,12 @@ export async function approvePresentationResult(
         userId = user.id;
         await tx.applicationPostGraduate.update({
           where: { id: application.id },
-          data: { status: "APPROVED", userId: user.id },
+          data: { status: "APPROVED", userId: user.id, registrationNumber },
         });
       } else {
         await tx.applicationPostGraduate.update({
           where: { id: application.id },
-          data: { status: "APPROVED" },
+          data: { status: "APPROVED", registrationNumber },
         });
       }
 
@@ -265,8 +277,27 @@ export async function approvePresentationResult(
       await sendPresentationApprovedNotification(studentEmail, application.fullName);
     }
 
+    // Registration completed: the Main Admin can now verify the student's
+    // information and the faculty admin picks the student up for progress.
+    await notifyRole("MAIN_ADMIN", {
+      title: "Registration completed",
+      message: `${application.fullName} (${registrationNumber}) passed the presentation and is now a registered postgraduate.`,
+      applicationId: application.id,
+      category: "verification",
+      senderName: "Registrar",
+      link: `/admin/applications/${application.id}`,
+    });
+    await notifyFacultyAdmins(application.faculty, {
+      title: "New registered postgraduate",
+      message: `${application.fullName} (${registrationNumber}) has completed registration.`,
+      applicationId: application.id,
+      category: "verification",
+      senderName: "Registrar",
+    });
+
     revalidatePath("/registrar/presentations");
     revalidatePath("/registrar/approved");
+    revalidatePath("/registrar/registrations");
     return { ok: true };
   } catch (error) {
     console.error("Error approving presentation:", error);
