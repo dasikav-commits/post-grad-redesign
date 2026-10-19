@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireApprovedSupervisor } from "@/lib/guard";
-import { notifyRole } from "@/lib/notify";
+import { notifyFacultyAdmins } from "@/lib/notify";
 
 export type MarkPresentationDoneResult =
   | { ok: true }
@@ -30,7 +30,7 @@ export async function markPresentationDone(
             select: { supervisorId: true },
           },
           application: {
-            select: { fullName: true },
+            select: { fullName: true, faculty: true },
           },
         },
       },
@@ -74,10 +74,13 @@ export async function markPresentationDone(
       data: { isDone: true },
     });
 
-    // Notify all registrars that the presentation is awaiting their review.
-    await notifyRole("REGISTRAR", {
+    // Notify the faculty admins that the presentation is awaiting their outcome.
+    await notifyFacultyAdmins(presentation.proposal.application.faculty, {
       title: "Presentation Completed",
-      message: `Presentation for ${presentation.proposal.application.fullName} has been marked as completed and is awaiting your review.`,
+      message: `Presentation for ${presentation.proposal.application.fullName} has been marked as completed and is awaiting your outcome.`,
+      category: "presentation",
+      senderName: "Supervisor",
+      link: `/faculty-admin/presentations/${presentationId}`,
     });
 
     revalidatePath("/supervisor/presentations");

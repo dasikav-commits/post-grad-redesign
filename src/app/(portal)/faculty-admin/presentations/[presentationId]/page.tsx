@@ -3,20 +3,34 @@ import Link from "next/link";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
-import { PresentationReviewForm } from "./review-form";
+import {
+  PresentationReviewForm,
+  ReschedulePresentationForm,
+} from "./review-form";
 
 export const dynamic = "force-dynamic";
+
+function toLocalInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 export default async function PresentationDetailPage({
   params,
 }: {
   params: Promise<{ presentationId: string }>;
 }) {
-  await requireRole("REGISTRAR");
+  const session = await requireRole("FACULTY_ADMIN");
   const { presentationId } = await params;
   const id = Number(presentationId);
 
   if (!Number.isInteger(id)) notFound();
+
+  // Faculty admins only manage presentations of their own faculty.
+  const profile = await prisma.facultyAdminProfile.findUnique({
+    where: { userId: session.userId },
+    select: { faculty: true },
+  });
 
   const presentation = await prisma.presentation.findUnique({
     where: { id },
@@ -32,6 +46,7 @@ export default async function PresentationDetailPage({
               fullName: true,
               degreeProgram: true,
               nic: true,
+              faculty: true,
               status: true,
             },
           },
@@ -65,15 +80,21 @@ export default async function PresentationDetailPage({
   });
 
   if (!presentation) notFound();
-
   const student = presentation.proposal.application;
+  if (
+    profile?.faculty &&
+    student.faculty &&
+    profile.faculty !== student.faculty
+  ) {
+    notFound();
+  }
   const proposal = presentation.proposal;
 
   return (
     <>
       <div className="mb-4">
         <Link
-          href="/registrar/presentations"
+          href="/faculty-admin/presentations"
           className="text-sm text-neutral-500 underline"
         >
           ← Back to presentations
@@ -81,7 +102,7 @@ export default async function PresentationDetailPage({
       </div>
       <PageHeader
         title={`Presentation Review — ${student.fullName}`}
-        subtitle={`Scheduled for ${new Date(presentation.presentationDate).toLocaleDateString()}`}
+        subtitle={`Scheduled for ${new Date(presentation.presentationDate).toLocaleString()}`}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -131,23 +152,41 @@ export default async function PresentationDetailPage({
                 </span>
               </div>
               <div className="flex justify-between border-t border-border pt-2">
+                <span className="text-neutral-500">Venue</span>
+                <span className="font-medium text-black">
+                  {presentation.venue || "—"}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-border pt-2">
                 <span className="text-neutral-500">Status</span>
                 <span
                   className={`font-medium ${
-                    presentation.isFinal
+                    presentation.outcome === "RECOMMENDED"
                       ? "text-green-700"
-                      : presentation.isDone
-                        ? "text-yellow-700"
-                        : "text-blue-700"
+                      : presentation.outcome === "NOT_RECOMMENDED"
+                        ? "text-red-700"
+                        : presentation.isDone
+                          ? "text-yellow-700"
+                          : "text-blue-700"
                   }`}
                 >
-                  {presentation.isFinal
-                    ? "Approved"
-                    : presentation.isDone
-                      ? "Completed"
-                      : "Scheduled"}
+                  {presentation.outcome === "RECOMMENDED"
+                    ? "Recommended"
+                    : presentation.outcome === "NOT_RECOMMENDED"
+                      ? "Not recommended"
+                      : presentation.isDone
+                        ? "Completed"
+                        : "Scheduled"}
                 </span>
               </div>
+              {presentation.decidedAt && (
+                <div className="flex justify-between border-t border-border pt-2">
+                  <span className="text-neutral-500">Decided</span>
+                  <span className="font-medium text-black">
+                    {presentation.decidedAt.toLocaleString()}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -227,14 +266,20 @@ export default async function PresentationDetailPage({
         </div>
 
         {/* Review Panel */}
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-4">
           <PresentationReviewForm
             presentationId={id}
             isDone={presentation.isDone}
-            isFinal={presentation.isFinal}
-            applicationId={student.id}
-            applicationStatus={student.status}
+            outcome={presentation.outcome}
+            outcomeNote={presentation.outcomeNote}
           />
+          {!presentation.isDone && !presentation.outcome && (
+            <ReschedulePresentationForm
+              presentationId={id}
+              initialDate={toLocalInputValue(new Date(presentation.presentationDate))}
+              initialVenue={presentation.venue ?? ""}
+            />
+          )}
         </div>
       </div>
     </>

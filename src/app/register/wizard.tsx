@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { durationLabel } from "@/lib/duration";
+import { readApiResponse } from "@/lib/api-response";
 import { FileField, type UploadedRef } from "./file-field";
 
 // ---- Types mirroring the /api/register contract --------------------------
@@ -67,6 +68,15 @@ type Supervisor = {
   consent: UploadedRef | null;
 };
 
+// One payment slip row (amount / purpose / date / scanned slip). Amount and
+// date are kept as strings while the applicant types.
+type PaymentSlip = {
+  amount: string;
+  purpose: string;
+  date: string;
+  file: UploadedRef | null;
+};
+
 type Form = {
   facultyId: number | null; degreeId: number | null;
   fullName: string; nameWithInitials: string; nic: string; dateOfBirth: string;
@@ -82,8 +92,9 @@ type Form = {
     applicationForm: UploadedRef | null;
     cv: UploadedRef | null; birthCertificate: UploadedRef | null; transcript: UploadedRef | null;
     photo: UploadedRef | null;
-    referees: UploadedRef[]; budgets: UploadedRef[]; paymentReceipts: UploadedRef[];
+    referees: UploadedRef[]; budgets: UploadedRef[];
   };
+  paymentSlips: PaymentSlip[];
   ack: { applicationForm: boolean; signedProposal: boolean; photographs: boolean; paymentReceipts: boolean };
   proposal: { title: string; objectives: string; file: UploadedRef | null };
   supervisors: Supervisor[];
@@ -105,6 +116,7 @@ const emptyAcademic = (): Academic => ({
 });
 const emptyWork = (): Work => ({ organization: "", positionHeld: "", periodFrom: "", periodTo: "", file: null });
 const emptyProf = (): Professional => ({ institution: "", fieldOfStudy: "", periodFrom: "", periodTo: "", file: null });
+const emptyPaymentSlip = (): PaymentSlip => ({ amount: "", purpose: "", date: "", file: null });
 
 const initialForm: Form = {
   facultyId: null, degreeId: null,
@@ -118,8 +130,9 @@ const initialForm: Form = {
   professionals: [],
   documents: {
     applicationForm: null, cv: null, birthCertificate: null, transcript: null, photo: null,
-    referees: [], budgets: [], paymentReceipts: [],
+    referees: [], budgets: [],
   },
+  paymentSlips: [emptyPaymentSlip()],
   ack: { applicationForm: false, signedProposal: false, photographs: false, paymentReceipts: false },
   proposal: { title: "", objectives: "", file: null },
   supervisors: [{ supervisorId: null, isMain: true, cv: null, consent: null }],
@@ -206,8 +219,16 @@ export function RegistrationWizard({
       if (doc.referees.length < 2)
         return "Upload at least two (02) referee reports.";
       if (doc.budgets.length < 1) return "Upload the proposed budget.";
-      if (doc.paymentReceipts.length < 1)
-        return "Upload at least one payment receipt.";
+      if (form.paymentSlips.length < 1)
+        return "Add at least one payment slip.";
+      for (const s of form.paymentSlips) {
+        if (!s.amount.trim() || Number(s.amount) <= 0)
+          return "Enter the amount for each payment slip.";
+        if (!s.purpose.trim())
+          return "Enter the purpose for each payment slip.";
+        if (!s.date) return "Enter the date for each payment slip.";
+        if (!s.file) return "Upload the scanned slip for each payment.";
+      }
       const missingAck = ACK_ITEMS.filter(([key]) => !form.ack[key]).map(
         ([, text]) => text,
       );
@@ -280,6 +301,12 @@ export function RegistrationWizard({
         works: form.works,
         professionals: form.professionals,
         documents: form.documents,
+        paymentSlips: form.paymentSlips.map((s) => ({
+          amount: Number(s.amount),
+          purpose: s.purpose.trim(),
+          date: s.date,
+          file: s.file!,
+        })),
         proposal: { title: form.proposal.title.trim(), objectives: form.proposal.objectives.trim(), file: form.proposal.file },
         supervisors: form.supervisors,
       };
@@ -288,12 +315,15 @@ export function RegistrationWizard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Submission failed.");
+      // Surface the real server-side message on 4xx/5xx instead of a generic
+      // "Network error" (the request itself succeeded).
+      const result = await readApiResponse<{ ok?: boolean; applicationId?: number }>(res);
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
-      router.push(`/register/success?id=${data.applicationId}`);
+      const applicationId = result.data?.applicationId;
+      router.push(`/register/success?id=${applicationId ?? ""}`);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -769,6 +799,109 @@ function MultiFile({ files, onChange, folder, label: lbl }: {
   );
 }
 
+function PaymentSlips({ form, set }: { form: Form; set: (p: Partial<Form>) => void }) {
+  const slips = form.paymentSlips;
+  const update = (i: number, patch: Partial<PaymentSlip>) => {
+    const next = [...slips];
+    next[i] = { ...next[i], ...patch };
+    set({ paymentSlips: next });
+  };
+  const total = slips.reduce((sum, s) => {
+    const n = Number(s.amount);
+    return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+  }, 0);
+
+  return (
+    <div className={card}>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-base font-bold text-black">Payment Slips</h3>
+        <button
+          type="button"
+          className="text-xs font-medium text-black underline"
+          onClick={() => set({ paymentSlips: [...slips, emptyPaymentSlip()] })}
+        >
+          + Add payment slip
+        </button>
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">
+        At least one payment slip is required (incl. the application lodging
+        fee). Enter the amount, purpose and date for each slip and upload the
+        scanned receipt.
+      </p>
+      <div className="space-y-3">
+        {slips.map((s, i) => (
+          <div key={i} className="rounded-md border border-border p-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className={label}>Amount (Rs) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={input}
+                  value={s.amount}
+                  onChange={(e) => update(i, { amount: e.target.value })}
+                  placeholder="e.g., 5000"
+                />
+              </div>
+              <div>
+                <label className={label}>Purpose *</label>
+                <input
+                  type="text"
+                  className={input}
+                  value={s.purpose}
+                  onChange={(e) => update(i, { purpose: e.target.value })}
+                  placeholder="e.g., Application lodging fee"
+                />
+              </div>
+              <div>
+                <label className={label}>Date *</label>
+                <input
+                  type="date"
+                  className={input}
+                  value={s.date}
+                  onChange={(e) => update(i, { date: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+              <div className="min-w-56 flex-1">
+                <FileField
+                  label="Scanned slip *"
+                  folder="payment-receipt"
+                  value={s.file}
+                  onChange={(f) => update(i, { file: f })}
+                />
+              </div>
+              {slips.length > 1 && (
+                <button
+                  type="button"
+                  className="text-xs text-neutral-500 underline"
+                  onClick={() =>
+                    set({ paymentSlips: slips.filter((_, j) => j !== i) })
+                  }
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-between border-t border-border pt-3 text-sm">
+        <span className="text-neutral-500">Total</span>
+        <span className="font-semibold text-black">
+          Rs{" "}
+          {total.toLocaleString("en-LK", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function StepDocuments({ form, set }: { form: Form; set: (p: Partial<Form>) => void }) {
   const doc = form.documents;
   const setDoc = (patch: Partial<Form["documents"]>) => set({ documents: { ...doc, ...patch } });
@@ -796,7 +929,7 @@ function StepDocuments({ form, set }: { form: Form; set: (p: Partial<Form>) => v
 
       <MultiFile label="Referee Reports (at least two) *" folder="referee" files={doc.referees} onChange={(referees) => setDoc({ referees })} />
       <MultiFile label="Proposed Budget + Funding Evidence *" folder="budget" files={doc.budgets} onChange={(budgets) => setDoc({ budgets })} />
-      <MultiFile label="Payment Receipts (incl. application lodging fee) *" folder="payment-receipt" files={doc.paymentReceipts} onChange={(paymentReceipts) => setDoc({ paymentReceipts })} />
+      <PaymentSlips form={form} set={set} />
 
       <div className={card}>
         <h3 className="mb-2 text-base font-bold text-black">Physical submissions — acknowledge</h3>
@@ -983,7 +1116,15 @@ function StepReview({ form, faculties, selectedDegree, supervisorOptions }: {
         <Row k="Professional qualifications" v={`${form.professionals.filter((p) => p.file).length}/${form.professionals.length}`} />
         <Row k="Referee reports" v={`${form.documents.referees.length}`} />
         <Row k="Budget" v={`${form.documents.budgets.length}`} />
-        <Row k="Payment receipts" v={`${form.documents.paymentReceipts.length}`} />
+        <Row
+          k="Payment slips"
+          v={`${form.paymentSlips.length} — total Rs ${form.paymentSlips
+            .reduce((sum, s) => {
+              const n = Number(s.amount);
+              return sum + (Number.isFinite(n) && n > 0 ? n : 0);
+            }, 0)
+            .toLocaleString("en-LK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        />
         <Row k="Physical submissions acknowledged" v={ACK_ITEMS.every(([k]) => form.ack[k]) ? "Yes" : "No"} />
       </div>
       <div className={card}>

@@ -50,7 +50,7 @@ export default async function RegistrarDashboard() {
     <>
       <PageHeader
         title={`Welcome, ${session.fullName}`}
-        subtitle="Registrar — the main handler for applications: verify student information, inform applicants and manage presentations."
+        subtitle="Registrar — the main handler for applications: verify student information and inform applicants. Presentations are handled by the Faculty Admin (shown here read-only)."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -81,13 +81,13 @@ export default async function RegistrarDashboard() {
         <StatCard
           label="Pending presentations"
           value={pendingPres}
-          hint="To be marked"
+          hint="Read-only — Faculty Admin"
           accent="from-indigo-500 to-violet-500"
         />
         <StatCard
           label="Completed presentations"
           value={donePres}
-          hint="Marked & closed"
+          hint="Read-only — Faculty Admin"
           accent="from-sky-500 to-cyan-500"
         />
       </div>
@@ -136,12 +136,6 @@ export default async function RegistrarDashboard() {
           className="rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-semibold text-brand-dark transition hover:bg-brand-light"
         >
           Student progress
-        </Link>
-        <Link
-          href="/registrar/presentations"
-          className="rounded-xl border border-border bg-white px-5 py-2.5 text-sm font-semibold text-brand-dark transition hover:bg-brand-light"
-        >
-          Pending presentations
         </Link>
       </div>
     </>

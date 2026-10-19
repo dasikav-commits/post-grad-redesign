@@ -12,11 +12,17 @@ export default async function AssignPresentationPage({
 }: {
   params: Promise<{ applicationId: string }>;
 }) {
-  await requireRole("REGISTRAR");
+  const session = await requireRole("FACULTY_ADMIN");
   const { applicationId } = await params;
   const appId = Number(applicationId);
 
   if (!Number.isInteger(appId)) notFound();
+
+  // Faculty admins only assign presentations for their own faculty.
+  const profile = await prisma.facultyAdminProfile.findUnique({
+    where: { userId: session.userId },
+    select: { faculty: true },
+  });
 
   const app = await prisma.applicationPostGraduate.findUnique({
     where: { id: appId },
@@ -24,6 +30,7 @@ export default async function AssignPresentationPage({
       id: true,
       fullName: true,
       status: true,
+      faculty: true,
       degreeProgram: true,
       researchProposals: {
         select: {
@@ -43,13 +50,14 @@ export default async function AssignPresentationPage({
   });
 
   if (!app) notFound();
+  if (profile?.faculty && app.faculty && profile.faculty !== app.faculty) notFound();
 
   const proposal = app.researchProposals[0];
 
   return (
     <>
       <div className="mb-4">
-        <Link href="/registrar/presentations" className="text-sm text-neutral-500 underline">
+        <Link href="/faculty-admin/presentations" className="text-sm text-neutral-500 underline">
           ← Back to presentations
         </Link>
       </div>
@@ -90,6 +98,10 @@ export default async function AssignPresentationPage({
                 </li>
               )) || <li className="text-neutral-500">No supervisors assigned</li>}
             </ul>
+            <p className="mt-3 text-xs text-neutral-500">
+              The student and every supervisor are notified (portal + email) with
+              the date, time and venue once the presentation is assigned.
+            </p>
           </div>
         </div>
       </div>

@@ -24,6 +24,15 @@ export type ReviewFile = {
   category: string | null;
 };
 
+export type ReviewPayment = {
+  id: number;
+  amount: number;
+  purpose: string;
+  paymentDate: Date;
+  fileName: string;
+  filePath: string;
+};
+
 export type ReviewPacket = {
   id: number;
   fullName: string;
@@ -52,6 +61,8 @@ export type ReviewPacket = {
   emails: string[];
   contacts: { type: string; value: string }[];
   documents: ReviewFile[];
+  /** Declared payment slips (amount / purpose / date / slip). */
+  payments: ReviewPayment[];
   academicQualifications: {
     id: number;
     university: string;
@@ -160,6 +171,11 @@ export async function getApplicationReviewPacket(
     orderBy: { id: "asc" },
   });
 
+  const payments = await prisma.payment.findMany({
+    where: { applicationId },
+    orderBy: { paymentDate: "asc" },
+  });
+
   const proposal = app.researchProposals[0] ?? null;
 
   const facts = factsFromApplication({
@@ -204,6 +220,14 @@ export async function getApplicationReviewPacket(
       fileName: d.fileName,
       filePath: d.filePath,
       category: d.category,
+    })),
+    payments: payments.map((p) => ({
+      id: p.id,
+      amount: Number(p.amount),
+      purpose: p.purpose,
+      paymentDate: p.paymentDate,
+      fileName: p.fileName,
+      filePath: p.filePath,
     })),
     academicQualifications: app.academicQualifications.map(
       (a: {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
@@ -23,6 +24,7 @@ export default async function Page() {
       title: true,
       application: {
         select: {
+          id: true,
           fullName: true,
           status: true,
         },
@@ -32,6 +34,16 @@ export default async function Page() {
         select: { isMain: true, status: true },
       },
       files: { select: { fileName: true, filePath: true } },
+      presentations: {
+        select: {
+          presentationDate: true,
+          venue: true,
+          isDone: true,
+          outcome: true,
+        },
+        orderBy: { presentationDate: "desc" },
+        take: 1,
+      },
     },
   });
 
@@ -39,7 +51,7 @@ export default async function Page() {
     <>
       <PageHeader
         title="My Students"
-        subtitle="Students you supervise as main or co-supervisor."
+        subtitle="Students you supervise as main or co-supervisor. Open a student to view their full dossier."
       />
       <div className="space-y-3">
         {proposals.length === 0 ? (
@@ -51,12 +63,19 @@ export default async function Page() {
             const selfRole = proposal.supervisors[0];
             const proposalFile = proposal.files[0];
             const status = proposal.application.status;
+            const presentation = proposal.presentations[0] ?? null;
             return (
               <div key={proposal.id} className="rounded-lg border border-border bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="font-semibold text-black">{proposal.application.fullName}</p>
                     <p className="text-sm text-neutral-600">{proposal.title}</p>
+                    {presentation && (
+                      <p className="mt-1 text-xs text-neutral-500">
+                        Presentation: {new Date(presentation.presentationDate).toLocaleString()}
+                        {presentation.venue ? ` · ${presentation.venue}` : ""}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span
@@ -73,6 +92,12 @@ export default async function Page() {
                     <span className="rounded bg-brand px-2 py-0.5 text-xs font-semibold text-white">
                       {selfRole?.isMain ? "Main supervisor" : "Co-supervisor"}
                     </span>
+                    <Link
+                      href={`/supervisor/students/${proposal.application.id}`}
+                      className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-black hover:border-brand"
+                    >
+                      View student
+                    </Link>
                   </div>
                 </div>
                 {proposalFile && (

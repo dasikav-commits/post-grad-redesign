@@ -23,7 +23,8 @@ export function MarkPresentationCompleteForm({
       <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4">
         <h3 className="mb-2 text-base font-bold text-yellow-900">✓ Marked Complete</h3>
         <p className="text-sm text-yellow-800">
-          This presentation has been marked as completed and is awaiting the Registrar&apos;s review.
+          This presentation has been marked as completed. The Faculty Admin will
+          now record the outcome (Recommended / Not recommended).
         </p>
       </div>
     );
@@ -38,7 +39,8 @@ export function MarkPresentationCompleteForm({
         </p>
       )}
       <p className="text-sm text-neutral-600">
-        Once you mark this presentation as complete, the Registrar will review the result.
+        Once you mark this presentation as complete, the Faculty Admin will
+        record the outcome.
       </p>
       <button
         onClick={handleMarkDone}

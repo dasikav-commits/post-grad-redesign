@@ -20,11 +20,18 @@ type PresentationRow = {
   id: number;
   title: string;
   presentationDate: Date;
+  venue: string | null;
   isDone: boolean;
   isFinal: boolean;
+  outcome: string | null;
   proposal: {
     title: string;
-    application: { fullName: string; degreeProgram: string | null; faculty: string | null };
+    application: {
+      id: number;
+      fullName: string;
+      degreeProgram: string | null;
+      faculty: string | null;
+    };
     supervisors: { supervisor: { name: string } }[];
   };
 };
@@ -47,30 +54,39 @@ function Row({ presentation }: { presentation: PresentationRow }) {
             .join(", ") || "—"}
         </div>
       </td>
-      <td className="px-4 py-3 text-neutral-600">{fmt(presentation.presentationDate)}</td>
+      <td className="px-4 py-3 text-neutral-600">
+        {fmt(presentation.presentationDate)}
+        {presentation.venue && (
+          <div className="text-xs text-neutral-500">{presentation.venue}</div>
+        )}
+      </td>
       <td className="px-4 py-3">
         <span
           className={`rounded px-2 py-1 text-xs font-semibold ${
-            presentation.isFinal
+            presentation.outcome === "RECOMMENDED"
               ? "bg-green-100 text-green-800"
-              : presentation.isDone
-                ? "bg-yellow-100 text-yellow-800"
-                : "bg-blue-100 text-blue-800"
+              : presentation.outcome === "NOT_RECOMMENDED"
+                ? "bg-red-100 text-red-800"
+                : presentation.isDone
+                  ? "bg-yellow-100 text-yellow-800"
+                  : "bg-blue-100 text-blue-800"
           }`}
         >
-          {presentation.isFinal
-            ? "Approved"
-            : presentation.isDone
-              ? "Completed — awaiting approval"
-              : "Scheduled"}
+          {presentation.outcome === "RECOMMENDED"
+            ? "Recommended"
+            : presentation.outcome === "NOT_RECOMMENDED"
+              ? "Not recommended"
+              : presentation.isDone
+                ? "Completed — awaiting outcome"
+                : "Scheduled"}
         </span>
       </td>
       <td className="px-4 py-3 text-right">
         <Link
-          href={`/registrar/presentations/${presentation.id}`}
+          href={`/admin/applications/${app.id}`}
           className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-black hover:border-brand"
         >
-          View
+          View application
         </Link>
       </td>
     </tr>
@@ -111,13 +127,15 @@ const SELECT = {
   id: true,
   title: true,
   presentationDate: true,
+  venue: true,
   isDone: true,
   isFinal: true,
+  outcome: true,
   proposal: {
     select: {
       title: true,
       application: {
-        select: { fullName: true, degreeProgram: true, faculty: true },
+        select: { id: true, fullName: true, degreeProgram: true, faculty: true },
       },
       supervisors: { select: { supervisor: { select: { name: true } } } },
     },

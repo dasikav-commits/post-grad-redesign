@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { UserRole } from "@prisma/client";
+import type { UserRole, VerificationStatus } from "@prisma/client";
 import { prisma } from "./prisma";
 import { factsFromApplication, requirementSummary } from "./requirements";
 import { buildXlsx, type CellValue, type Sheet } from "./xlsx";
@@ -67,10 +67,12 @@ export async function loadExportRows(
   // Comma separated list of VerificationStatus values, e.g.
   // "NOT_VERIFIED,UNDER_REVIEW".
   const verificationFilter = (() => {
-    const wanted = (verification ?? "")
+    const wanted: VerificationStatus[] = (verification ?? "")
       .split(",")
       .map((v) => v.trim())
-      .filter((v) => (VERIFICATIONS as readonly string[]).includes(v));
+      .filter((v): v is VerificationStatus =>
+        (VERIFICATIONS as readonly string[]).includes(v),
+      );
     return wanted.length ? { verificationStatus: { in: wanted } } : {};
   })();
 

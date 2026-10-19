@@ -103,6 +103,14 @@ enum SupervisorApprovalStatus {
   REJECTED
 }
 
+// Outcome recorded by the Faculty Admin once a presentation has been completed:
+// RECOMMENDED completes the registration, NOT_RECOMMENDED rejects the
+// application (the reason is sent to the student and everyone involved).
+enum PresentationOutcome {
+  RECOMMENDED
+  NOT_RECOMMENDED
+}
+
 // Lifecycle of a registration. Registrar is the gatekeeper:
 //  - ACTIVE: in progress / awaiting or passed registrar review (not yet rejected)
 //  - REJECTED: rejected by registrar; data retained for admin contact, but the
@@ -176,6 +184,9 @@ model FacultyAdminProfile {
   declarations ApplicantDeclaration[]
   // Progress reports endorsed (or returned) by this faculty admin.
   progressReviews ProgressReport[]
+  // Presentations scheduled (and outcomes recorded) by this faculty admin.
+  presentationsCreated Presentation[] @relation("PresentationCreator")
+  presentationsDecided  Presentation[] @relation("PresentationOutcomeBy")
 
   @@map("faculty_admin")
 }
@@ -333,6 +344,7 @@ model ApplicationPostGraduate {
   verifications              ApplicationVerification[]
   corrections                CorrectionRequest[]
   messages                   Message[]
+  payments                   Payment[]
 
   @@index([nic])
   @@map("application_post_graduate")
@@ -683,13 +695,49 @@ model Presentation {
   progress         ProgressReport?  @relation(fields: [progressId], references: [id], onDelete: SetNull)
   title            String           @map("title")
   presentationDate DateTime         @map("presentation_date")
+  // Where the presentation takes place. Included in every schedule notice.
+  venue            String?          @map("venue")
   isDone           Boolean          @default(false) @map("is_done")
   isFinal          Boolean          @default(false) @map("is_final")
-  createdByAdminId Int              @map("created_by_admin")
-  createdByAdmin   AdminProfile     @relation(fields: [createdByAdminId], references: [id], onDelete: Restrict)
+  // Outcome recorded by the Faculty Admin after the presentation is completed.
+  // RECOMMENDED completes the registration; NOT_RECOMMENDED rejects the
+  // application (with outcomeNote sent to the student and supervisors).
+  outcome          PresentationOutcome? @map("outcome")
+  outcomeNote      String?          @map("outcome_note")
+  outcomeById      Int?             @map("outcome_by_id")
+  outcomeBy        FacultyAdminProfile? @relation("PresentationOutcomeBy", fields: [outcomeById], references: [id], onDelete: SetNull)
+  decidedAt        DateTime?        @map("decided_at")
+  // Created by a faculty admin (presentations moved from the Registrar).
+  // legacy rows were created by a main admin.
+  createdByFacultyAdminId Int?     @map("created_by_faculty_admin_id")
+  createdByFacultyAdmin FacultyAdminProfile? @relation("PresentationCreator", fields: [createdByFacultyAdminId], references: [id], onDelete: SetNull)
+  createdByAdminId Int?             @map("created_by_admin")
+  createdByAdmin   AdminProfile?   @relation(fields: [createdByAdminId], references: [id], onDelete: Restrict)
   createdAt        DateTime         @default(now()) @map("created_at")
 
+  @@index([outcomeById])
+  @@index([createdByFacultyAdminId])
   @@map("presentation")
+}
+
+// One payment slip declared during registration (amount / purpose / date /
+// scanned slip). The slip file is *also* kept as an UploadedFile with category
+// PAYMENT_RECEIPT so the registration requirements checklist is unchanged;
+// receipts uploaded before this table existed show as "amount not declared".
+model Payment {
+  id            Int                     @id @default(autoincrement()) @map("payment_slip_id")
+  applicationId Int                     @map("application_id")
+  application   ApplicationPostGraduate @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  amount        Decimal                 @db.Decimal(12, 2) @map("amount")
+  purpose       String                  @map("purpose")
+  paymentDate   DateTime                @db.Date @map("payment_date")
+  fileName      String                  @map("file_name")
+  filePath      String                  @map("file_path")
+  createdAt     DateTime                @default(now()) @map("created_at")
+
+  @@index([applicationId])
+  @@index([paymentDate])
+  @@map("payment_slip")
 }
 
 model Notification {

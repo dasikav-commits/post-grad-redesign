@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { readApiResponse } from "@/lib/api-response";
 
 export function LoginForm() {
   const router = useRouter();
@@ -20,12 +21,14 @@ export function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Sign in failed.");
+      // Surface the real server-side message on 4xx/5xx instead of a generic
+      // "Network error" (the request itself succeeded).
+      const result = await readApiResponse<{ home?: string }>(res);
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
-      router.push(data.home ?? "/");
+      router.push(result.data?.home ?? "/");
     } catch {
       setError("Network error. Please try again.");
     } finally {

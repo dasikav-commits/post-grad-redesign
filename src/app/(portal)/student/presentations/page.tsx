@@ -29,8 +29,11 @@ export default async function StudentPresentationsPage() {
             select: {
               id: true,
               presentationDate: true,
+              venue: true,
               isDone: true,
               isFinal: true,
+              outcome: true,
+              outcomeNote: true,
               title: true,
             },
             orderBy: { presentationDate: "desc" },
@@ -62,13 +65,13 @@ export default async function StudentPresentationsPage() {
     <>
       <PageHeader
         title="Presentations"
-        subtitle="View your assigned presentation dates and details."
+        subtitle="View your assigned presentation dates, venue and outcome."
       />
 
       {presentations.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-white p-8 text-center text-sm text-neutral-500">
-          No presentation date has been assigned yet. The Registrar will schedule your
-          presentation once your application is approved.
+          No presentation date has been assigned yet. The Faculty Admin will
+          schedule your presentation once your application is approved.
         </div>
       ) : (
         <div className="space-y-4">
@@ -84,14 +87,22 @@ export default async function StudentPresentationsPage() {
                 </div>
                 <span
                   className={`text-xs font-semibold px-3 py-1 rounded whitespace-nowrap ${
-                    pres.isFinal
+                    pres.outcome === "RECOMMENDED"
                       ? "bg-green-100 text-green-800"
-                      : pres.isDone
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-blue-100 text-blue-800"
+                      : pres.outcome === "NOT_RECOMMENDED"
+                        ? "bg-red-100 text-red-800"
+                        : pres.isDone
+                          ? "bg-yellow-100 text-yellow-800"
+                          : "bg-blue-100 text-blue-800"
                   }`}
                 >
-                  {pres.isFinal ? "Approved" : pres.isDone ? "Completed" : "Scheduled"}
+                  {pres.outcome === "RECOMMENDED"
+                    ? "Recommended"
+                    : pres.outcome === "NOT_RECOMMENDED"
+                      ? "Not Recommended"
+                      : pres.isDone
+                        ? "Completed"
+                        : "Scheduled"}
                 </span>
               </div>
 
@@ -101,6 +112,11 @@ export default async function StudentPresentationsPage() {
                   <p className="font-medium text-black">
                     {new Date(pres.presentationDate).toLocaleString()}
                   </p>
+                </div>
+
+                <div className="border-t border-border pt-3">
+                  <p className="text-neutral-500">Venue</p>
+                  <p className="font-medium text-black">{pres.venue || "To be announced"}</p>
                 </div>
 
                 {proposal.supervisors.length > 0 && (
@@ -122,19 +138,32 @@ export default async function StudentPresentationsPage() {
                 )}
               </div>
 
-              {pres.isFinal && (
+              {pres.outcome === "RECOMMENDED" && (
                 <div className="mt-4 rounded-md bg-green-50 border border-green-200 p-3">
                   <p className="text-sm text-green-800">
-                    ✓ Your presentation has been approved. You are now registered as a postgraduate
-                    student.
+                    ✓ Your presentation was <strong>Recommended</strong>. You are now
+                    registered as a postgraduate student.
                   </p>
                 </div>
               )}
-              {pres.isDone && !pres.isFinal && (
+              {pres.outcome === "NOT_RECOMMENDED" && (
+                <div className="mt-4 rounded-md bg-red-50 border border-red-200 p-3">
+                  <p className="text-sm text-red-800">
+                    Your presentation outcome is <strong>Not Recommended</strong> and the
+                    application has been rejected.
+                  </p>
+                  {pres.outcomeNote && (
+                    <p className="mt-1 text-sm text-red-800">
+                      Reason: {pres.outcomeNote}
+                    </p>
+                  )}
+                </div>
+              )}
+              {pres.isDone && !pres.outcome && (
                 <div className="mt-4 rounded-md bg-yellow-50 border border-yellow-200 p-3">
                   <p className="text-sm text-yellow-800">
-                    Your presentation has been completed and is awaiting the Registrar&apos;s final
-                    approval.
+                    Your presentation has been completed and is awaiting the Faculty
+                    Admin&apos;s outcome (Recommended / Not Recommended).
                   </p>
                 </div>
               )}

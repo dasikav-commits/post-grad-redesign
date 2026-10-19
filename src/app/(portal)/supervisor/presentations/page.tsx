@@ -46,8 +46,10 @@ export default async function SupervisorPresentationsPage() {
         select: {
           id: true,
           presentationDate: true,
+          venue: true,
           isDone: true,
           isFinal: true,
+          outcome: true,
           title: true,
         },
         orderBy: { presentationDate: "desc" },
@@ -95,7 +97,8 @@ export default async function SupervisorPresentationsPage() {
                     <p className="font-medium text-black">{pres.studentName}</p>
                     <p className="text-sm text-neutral-600">{pres.proposalTitle}</p>
                     <p className="text-xs text-neutral-500">
-                      {new Date(pres.presentationDate).toLocaleString()} · {pres.degree}
+                      {new Date(pres.presentationDate).toLocaleString()}
+                      {pres.venue ? ` · ${pres.venue}` : ""} · {pres.degree}
                     </p>
                   </div>
                   <Link
@@ -127,16 +130,23 @@ export default async function SupervisorPresentationsPage() {
                     <p className="text-sm text-neutral-600">{pres.proposalTitle}</p>
                     <p className="text-xs text-neutral-500">
                       {new Date(pres.presentationDate).toLocaleString()}
+                      {pres.venue ? ` · ${pres.venue}` : ""}
                     </p>
                   </div>
                   <span
                     className={`text-xs font-semibold px-2 py-1 rounded ${
-                      pres.isFinal
+                      pres.outcome === "RECOMMENDED"
                         ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
+                        : pres.outcome === "NOT_RECOMMENDED"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
                     }`}
                   >
-                    {pres.isFinal ? "Approved" : "Awaiting Review"}
+                    {pres.outcome === "RECOMMENDED"
+                      ? "Recommended"
+                      : pres.outcome === "NOT_RECOMMENDED"
+                        ? "Not recommended"
+                        : "Awaiting outcome"}
                   </span>
                 </div>
               ))}

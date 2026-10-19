@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { VerificationStatus } from "@prisma/client";
 import { requireRole } from "@/lib/guard";
 import { prisma } from "@/lib/prisma";
 import { getApplicationSummaries } from "@/lib/application-summary";
@@ -27,10 +28,15 @@ const VERIFICATION_OF: Record<Exclude<Filter, "all">, string> = {
   verified: "VERIFIED",
 };
 
-function filterWhere(filter: Filter) {
+function filterWhere(filter: Filter): {
+  verificationStatus?: VerificationStatus | { in: VerificationStatus[] };
+} {
   if (filter === "pending")
-    return { verificationStatus: { in: ["NOT_VERIFIED", "UNDER_REVIEW"] } };
-  if (filter === "correction") return { verificationStatus: "CORRECTION_REQUESTED" };
+    return {
+      verificationStatus: { in: ["NOT_VERIFIED", "UNDER_REVIEW"] },
+    };
+  if (filter === "correction")
+    return { verificationStatus: "CORRECTION_REQUESTED" };
   if (filter === "verified") return { verificationStatus: "VERIFIED" };
   return {};
 }

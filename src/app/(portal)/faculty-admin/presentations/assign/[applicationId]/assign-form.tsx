@@ -11,6 +11,7 @@ export function AssignPresentationForm({ applicationId }: { applicationId: numbe
   const { pending, error, run, setError } = useServerAction();
   const [date, setDate] = useState("");
   const [title, setTitle] = useState("");
+  const [venue, setVenue] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,10 +27,10 @@ export function AssignPresentationForm({ applicationId }: { applicationId: numbe
     }
 
     run({
-      action: () => assignPresentationDate(applicationId, presentationDate, title),
+      action: () => assignPresentationDate(applicationId, presentationDate, title, venue),
       refresh: false,
       onSuccess: () => {
-        router.push("/registrar/presentations");
+        router.push("/faculty-admin/presentations");
       },
     });
   }
@@ -60,6 +61,22 @@ export function AssignPresentationForm({ applicationId }: { applicationId: numbe
 
       <div>
         <label className="block text-sm font-semibold text-black">
+          Venue <span className="text-neutral-500">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={venue}
+          onChange={(e) => setVenue(e.target.value)}
+          placeholder="e.g., Faculty Board Room, Building 02"
+          className="mt-2 w-full rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+        />
+        <p className="mt-1 text-xs text-neutral-600">
+          Included in the schedule notice sent to the student and supervisors
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-black">
           Presentation Title <span className="text-neutral-500">(optional)</span>
         </label>
         <input
@@ -77,10 +94,10 @@ export function AssignPresentationForm({ applicationId }: { applicationId: numbe
           disabled={pending}
           className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
         >
-          {pending ? "Assigning..." : "Assign Date"}
+          {pending ? "Assigning..." : "Assign date & venue"}
         </button>
         <Link
-          href="/registrar/presentations"
+          href="/faculty-admin/presentations"
           className="rounded-md border border-border px-4 py-2 text-sm font-semibold text-black hover:border-brand"
         >
           Cancel

@@ -33,7 +33,15 @@ export default async function Page({
   const presentation = await prisma.presentation.findFirst({
     where: { proposal: { applicationId: appId } },
     orderBy: { presentationDate: "desc" },
-    select: { id: true, presentationDate: true, isDone: true, isFinal: true },
+    select: {
+      id: true,
+      presentationDate: true,
+      venue: true,
+      isDone: true,
+      isFinal: true,
+      outcome: true,
+      outcomeNote: true,
+    },
   });
 
   const credentials = await prisma.applicationPostGraduate.findUnique({
@@ -63,43 +71,52 @@ export default async function Page({
 
       <ApplicationReview packet={packet} />
 
-      {/* Next step in the registration flow */}
+      {/* Next step in the registration flow — read-only: the Faculty Admin
+          schedules presentations and records the outcome. */}
       <div className="mt-6 rounded-lg border border-border bg-white p-4">
         <h3 className="text-base font-bold text-black">Presentation</h3>
         {presentation ? (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-neutral-600">
+          <div className="mt-2 space-y-1 text-sm text-neutral-600">
+            <p>
               Scheduled for{" "}
               <strong className="text-black">
                 {presentation.presentationDate.toLocaleString()}
-              </strong>{" "}
-              ·{" "}
-              {presentation.isFinal
-                ? "Approved — student registered"
-                : presentation.isDone
-                  ? "Completed — awaiting your approval"
-                  : "Not yet presented"}
+              </strong>
+              {presentation.venue && (
+                <>
+                  {" "}· Venue: <strong className="text-black">{presentation.venue}</strong>
+                </>
+              )}
             </p>
-            <Link
-              href={`/registrar/presentations/${presentation.id}`}
-              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-            >
-              Open presentation
-            </Link>
+            <p>
+              {presentation.outcome === "RECOMMENDED"
+                ? "Recommended — student registered"
+                : presentation.outcome === "NOT_RECOMMENDED"
+                  ? "Not recommended — application rejected"
+                  : presentation.isDone
+                    ? "Completed — awaiting the Faculty Admin's outcome"
+                    : "Not yet presented"}
+            </p>
+            {presentation.outcome === "NOT_RECOMMENDED" && presentation.outcomeNote && (
+              <p className="text-neutral-600">
+                Reason: <span className="text-black">{presentation.outcomeNote}</span>
+              </p>
+            )}
+            <p className="text-xs text-neutral-400">
+              Presentations are scheduled and decided by the Faculty Admin.
+            </p>
           </div>
         ) : (
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-neutral-600">
-              No presentation has been scheduled yet. Assign a date once the
-              requirements above are met — the student account is created when
-              the presentation result is approved.
+          <div className="mt-2 text-sm text-neutral-600">
+            <p>
+              No presentation has been scheduled yet. The Faculty Admin assigns a
+              date and venue once the requirements above are met — the student
+              account is created when the presentation outcome is
+              &quot;Recommended&quot;.
             </p>
-            <Link
-              href={`/registrar/presentations/assign/${appId}`}
-              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-            >
-              Schedule presentation date
-            </Link>
+            <p className="mt-1 text-xs text-neutral-400">
+              Presentations are scheduled and decided by the Faculty Admin.
+            </p>
           </div>
         )}
       </div>

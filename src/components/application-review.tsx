@@ -315,6 +315,48 @@ export function ApplicationReview({
             ))
           )}
         </Card>
+        <Card title="Payment slips">
+          {packet.payments.length === 0 ? (
+            <p className="text-sm text-neutral-400">
+              No declared payment slips (uploaded receipts appear under Checklist
+              documents).
+            </p>
+          ) : (
+            <>
+              <ul className="space-y-1 text-sm">
+                {packet.payments.map((p) => (
+                  <li key={p.id} className="flex justify-between gap-3">
+                    <span className="text-neutral-500">
+                      {fmt(p.paymentDate)} · {p.purpose}
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="font-medium text-black">
+                        Rs{" "}
+                        {p.amount.toLocaleString("en-LK", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                      <FileLink path={p.filePath} name={p.fileName} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex justify-between border-t border-border pt-2 text-sm">
+                <span className="text-neutral-500">Total declared</span>
+                <span className="font-semibold text-black">
+                  Rs{" "}
+                  {packet.payments
+                    .reduce((sum, p) => sum + p.amount, 0)
+                    .toLocaleString("en-LK", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                </span>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
 
       {/* Verification history */}

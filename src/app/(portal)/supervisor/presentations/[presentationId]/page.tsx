@@ -138,9 +138,31 @@ export default async function SupervisorPresentationDetailPage({
                 </span>
               </div>
               <div className="flex justify-between border-t border-border pt-2">
+                <span className="text-neutral-500">Venue</span>
+                <span className="font-medium text-black">
+                  {presentation.venue || "—"}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-border pt-2">
                 <span className="text-neutral-500">Status</span>
-                <span className="font-medium text-blue-700">
-                  {presentation.isDone ? "Completed" : "Scheduled"}
+                <span
+                  className={`font-medium ${
+                    presentation.outcome === "RECOMMENDED"
+                      ? "text-green-700"
+                      : presentation.outcome === "NOT_RECOMMENDED"
+                        ? "text-red-700"
+                        : presentation.isDone
+                          ? "text-yellow-700"
+                          : "text-blue-700"
+                  }`}
+                >
+                  {presentation.outcome === "RECOMMENDED"
+                    ? "Recommended"
+                    : presentation.outcome === "NOT_RECOMMENDED"
+                      ? "Not recommended"
+                      : presentation.isDone
+                        ? "Completed"
+                        : "Scheduled"}
                 </span>
               </div>
             </div>

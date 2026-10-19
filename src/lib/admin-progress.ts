@@ -137,7 +137,7 @@ export async function getStudentProgressOverview(
     const reports: ProgressReportRow[] = (proposal?.progressReports ?? []).map((r) => {
       // One row per assigned supervisor, filled from their review if present.
       const byName = new Map(
-        r.reviews.map((rv: { supervisor: { name: string } }) => [rv.supervisor.name, rv]),
+        r.reviews.map((rv) => [rv.supervisor.name, rv]),
       );
       const supervisors: ReportSupervisorRow[] = supervisorLinks.map((link) => {
         const rv = byName.get(link.supervisor.name);

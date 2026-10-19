@@ -5,16 +5,41 @@ import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
+const OUTCOME_BADGE: Record<string, string> = {
+  RECOMMENDED: "bg-green-100 text-green-800",
+  NOT_RECOMMENDED: "bg-red-100 text-red-800",
+};
+
+const OUTCOME_LABEL: Record<string, string> = {
+  RECOMMENDED: "Recommended",
+  NOT_RECOMMENDED: "Not recommended",
+};
+
 export default async function CompletedPresentationsPage() {
-  await requireRole("REGISTRAR");
+  const session = await requireRole("FACULTY_ADMIN");
+
+  // Faculty admins only see their own faculty.
+  const profile = await prisma.facultyAdminProfile.findUnique({
+    where: { userId: session.userId },
+    select: { faculty: true },
+  });
+  const faculty = profile?.faculty ?? null;
 
   const presentations = await prisma.presentation.findMany({
-    where: { isDone: true },
+    where: {
+      isDone: true,
+      ...(faculty
+        ? { proposal: { application: { faculty } } }
+        : {}),
+    },
     select: {
       id: true,
       title: true,
       presentationDate: true,
+      venue: true,
       isFinal: true,
+      outcome: true,
+      outcomeNote: true,
       proposal: {
         select: {
           title: true,
@@ -34,18 +59,12 @@ export default async function CompletedPresentationsPage() {
     <>
       <PageHeader
         title="Completed Presentations"
-        subtitle="Open completed presentation records to review the student, proposal and presentation outcome."
+        subtitle="Open a completed presentation to record the outcome — Recommended or Not recommended."
       />
 
       <div className="mb-5 flex flex-wrap gap-3">
         <Link
-          href="/registrar/approved"
-          className="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-        >
-          View approved students
-        </Link>
-        <Link
-          href="/registrar/presentations"
+          href="/faculty-admin/presentations"
           className="rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-black hover:border-brand"
         >
           Pending presentations
@@ -84,24 +103,31 @@ export default async function CompletedPresentationsPage() {
                   </td>
                   <td className="px-4 py-3 text-neutral-700">
                     {presentation.title || presentation.proposal.title}
+                    {presentation.venue && (
+                      <p className="text-xs text-neutral-500">{presentation.venue}</p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-neutral-600">
                     {new Date(presentation.presentationDate).toLocaleString()}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`rounded px-2 py-1 text-xs font-semibold ${
-                        presentation.isFinal
-                          ? "bg-green-100 text-green-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {presentation.isFinal ? "Approved" : "Awaiting approval"}
-                    </span>
+                    {presentation.outcome ? (
+                      <span
+                        className={`rounded px-2 py-1 text-xs font-semibold ${
+                          OUTCOME_BADGE[presentation.outcome] ?? "bg-neutral-100 text-neutral-700"
+                        }`}
+                      >
+                        {OUTCOME_LABEL[presentation.outcome] ?? presentation.outcome}
+                      </span>
+                    ) : (
+                      <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
+                        Awaiting your outcome
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
-                      href={`/registrar/presentations/${presentation.id}`}
+                      href={`/faculty-admin/presentations/${presentation.id}`}
                       className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark"
                     >
                       View presentation

@@ -57,6 +57,14 @@ const supervisorSchema = z.object({
   consent: fileSchema,
 });
 
+// One payment slip row from the wizard: amount / purpose / date / scanned slip.
+const paymentSlipSchema = z.object({
+  amount: z.number().positive("The payment amount must be greater than zero."),
+  purpose: z.string().trim().min(1, "Give the purpose of each payment."),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+  file: fileSchema,
+});
+
 const schema = z.object({
   facultyId: z.number().int().positive(),
   // Departments were removed from the structure; still accepted (and ignored)
@@ -97,8 +105,14 @@ const schema = z.object({
     photo: fileSchema,
     referees: z.array(fileSchema).min(2, "At least two referee reports are required."),
     budgets: z.array(fileSchema).min(1, "The proposed budget is required."),
-    paymentReceipts: z.array(fileSchema).min(1, "At least one payment receipt is required."),
   }),
+
+  // Declared payments (amount / purpose / date / slip). Each slip is stored as
+  // a Payment row *and* as an uploaded file with category PAYMENT_RECEIPT, so
+  // the registration requirements checklist is unchanged.
+  paymentSlips: z
+    .array(paymentSlipSchema)
+    .min(1, "At least one payment slip is required."),
 
   proposal: z.object({
     title: z.string().trim().min(1),
@@ -293,7 +307,6 @@ export async function POST(request: Request) {
         photo,
         referees,
         budgets,
-        paymentReceipts,
       } = d.documents;
       docs.push({ file: applicationForm, category: "APPLICATION_FORM" });
       docs.push({ file: cv, category: "CV" });
@@ -302,8 +315,9 @@ export async function POST(request: Request) {
       docs.push({ file: photo, category: "PHOTO" });
       for (const r of referees) docs.push({ file: r, category: "REFEREE_REPORT" });
       for (const b of budgets) docs.push({ file: b, category: "BUDGET" });
-      for (const p of paymentReceipts)
-        docs.push({ file: p, category: "PAYMENT_RECEIPT" });
+      // Payment slips double as the required payment receipts.
+      for (const s of d.paymentSlips)
+        docs.push({ file: s.file, category: "PAYMENT_RECEIPT" });
       if (docs.length) {
         await tx.uploadedFile.createMany({
           data: docs.map((x) => ({
@@ -312,6 +326,20 @@ export async function POST(request: Request) {
             filePath: x.file.path,
             category: x.category,
           })),
+        });
+      }
+
+      // Declared payments (amount / purpose / date / slip).
+      for (const s of d.paymentSlips) {
+        await tx.payment.create({
+          data: {
+            applicationId: app.id,
+            amount: s.amount,
+            purpose: s.purpose,
+            paymentDate: toDate(s.date)!,
+            fileName: s.file.fileName,
+            filePath: s.file.path,
+          },
         });
       }
 

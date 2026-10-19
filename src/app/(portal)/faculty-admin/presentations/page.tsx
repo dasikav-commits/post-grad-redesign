@@ -5,11 +5,21 @@ import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
-export default async function PresentationsPage() {
-  await requireRole("REGISTRAR");
+export default async function FacultyPresentationsPage() {
+  const session = await requireRole("FACULTY_ADMIN");
+
+  // Faculty admins only see their own faculty.
+  const profile = await prisma.facultyAdminProfile.findUnique({
+    where: { userId: session.userId },
+    select: { faculty: true },
+  });
+  const faculty = profile?.faculty ?? null;
 
   const apps = await prisma.applicationPostGraduate.findMany({
-    where: { status: { in: ["ACTIVE", "APPROVED"] } },
+    where: {
+      ...(faculty ? { faculty } : {}),
+      status: { in: ["ACTIVE", "APPROVED"] },
+    },
     select: {
       id: true,
       status: true,
@@ -24,8 +34,10 @@ export default async function PresentationsPage() {
             select: {
               id: true,
               presentationDate: true,
+              venue: true,
               isDone: true,
               isFinal: true,
+              outcome: true,
             },
             orderBy: { presentationDate: "desc" },
             take: 1,
@@ -40,29 +52,29 @@ export default async function PresentationsPage() {
   const withoutPresentation = apps.filter(
     (a) => a.researchProposals[0]?.presentations.length === 0,
   );
-  const scheduled = apps.filter(
-    (a) => a.researchProposals[0]?.presentations.length > 0 && !a.researchProposals[0]?.presentations[0]?.isDone,
-  );
-  const completed = apps.filter(
-    (a) => a.researchProposals[0]?.presentations.length > 0 && a.researchProposals[0]?.presentations[0]?.isDone && !a.researchProposals[0]?.presentations[0]?.isFinal,
-  );
+  const scheduled = apps.filter((a) => {
+    const p = a.researchProposals[0]?.presentations[0];
+    return p && !p.isDone;
+  });
+  const awaitingOutcome = apps.filter((a) => {
+    const p = a.researchProposals[0]?.presentations[0];
+    return p && p.isDone && !p.outcome;
+  });
 
   return (
     <>
       <PageHeader
         title="Presentations"
-        subtitle="Manage student presentations and review completion status."
+        subtitle={
+          faculty
+            ? `${faculty} — assign dates and venues, then record the outcome of every completed presentation.`
+            : "Assign dates and venues, then record the outcome of every completed presentation."
+        }
       />
 
       <div className="mb-5 flex flex-wrap gap-3">
         <Link
-          href="/registrar/approved"
-          className="rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-black hover:border-brand"
-        >
-          Approved students
-        </Link>
-        <Link
-          href="/registrar/presentations/completed"
+          href="/faculty-admin/presentations/completed"
           className="rounded-md border border-border bg-white px-3 py-2 text-sm font-semibold text-black hover:border-brand"
         >
           Completed presentations
@@ -100,10 +112,10 @@ export default async function PresentationsPage() {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <Link
-                          href={`/registrar/presentations/assign/${app.id}`}
+                          href={`/faculty-admin/presentations/assign/${app.id}`}
                           className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark"
                         >
-                          Assign Date
+                          Assign date &amp; venue
                         </Link>
                       </td>
                     </tr>
@@ -122,26 +134,28 @@ export default async function PresentationsPage() {
             </h2>
             <div className="space-y-2">
               {scheduled.map((app) => {
-                const presentation = app.researchProposals[0]?.presentations[0];
-                if (!presentation) return null;
-
+                const p = app.researchProposals[0]!.presentations[0]!;
                 return (
                   <div
-                    key={app.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-white p-3"
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 hover:bg-neutral-50"
                   >
                     <div>
                       <p className="font-medium text-black">{app.fullName}</p>
+                      <p className="text-sm text-neutral-600">
+                        {app.researchProposals[0]?.title}
+                      </p>
                       <p className="text-xs text-neutral-500">
-                        {new Date(presentation.presentationDate).toLocaleDateString()} · {app.researchProposals[0]?.title}
+                        {new Date(p.presentationDate).toLocaleString()}
+                        {p.venue ? ` · ${p.venue}` : ""}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <span className="rounded bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
                         Scheduled
                       </span>
                       <Link
-                        href={`/registrar/presentations/${presentation.id}`}
+                        href={`/faculty-admin/presentations/${p.id}`}
                         className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark"
                       >
                         View
@@ -154,34 +168,36 @@ export default async function PresentationsPage() {
           </div>
         )}
 
-        {/* Completed presentations awaiting registrar approval */}
-        {completed.length > 0 && (
+        {/* Awaiting the Faculty Admin's outcome */}
+        {awaitingOutcome.length > 0 && (
           <div className="rounded-lg border border-border bg-white p-4">
             <h2 className="mb-4 text-lg font-bold text-black">
-              Completed Presentations Awaiting Approval
+              Awaiting your outcome
             </h2>
             <div className="space-y-2">
-              {completed.map((app) => {
-                const presentation = app.researchProposals[0]?.presentations[0];
-                if (!presentation) return null;
-
+              {awaitingOutcome.map((app) => {
+                const p = app.researchProposals[0]!.presentations[0]!;
                 return (
                   <div
-                    key={app.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-white p-3"
+                    key={p.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3"
                   >
                     <div>
                       <p className="font-medium text-black">{app.fullName}</p>
+                      <p className="text-sm text-neutral-600">
+                        {app.researchProposals[0]?.title}
+                      </p>
                       <p className="text-xs text-neutral-500">
-                        {new Date(presentation.presentationDate).toLocaleString()} · {app.researchProposals[0]?.title}
+                        Presented {new Date(p.presentationDate).toLocaleString()}
+                        {p.venue ? ` · ${p.venue}` : ""}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">
                         Pending approval
                       </span>
                       <Link
-                        href={`/registrar/presentations/${presentation.id}`}
+                        href={`/faculty-admin/presentations/${p.id}`}
                         className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-dark"
                       >
                         Review
