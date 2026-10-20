@@ -51,9 +51,9 @@ export default async function SupervisorStudentDossierPage({
       </div>
       <PageHeader
         title={`Student dossier — ${packet.fullName}`}
-        subtitle={`Application #${packet.id} · everything the student submitted with their registration.`}
+        subtitle={`Application #${packet.id} · programme details, verification history and corrections.`}
       />
-      <ApplicationReview packet={packet} showPanel={false} />
+      <ApplicationReview packet={packet} showPanel={false} supervisorView />
     </>
   );
 }
