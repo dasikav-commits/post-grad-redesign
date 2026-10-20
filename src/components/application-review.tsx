@@ -86,9 +86,19 @@ function FileLink({ path, name }: { path: string; name: string }) {
 export function ApplicationReview({
   packet,
   showPanel = true,
+  supervisorView = false,
 }: {
   packet: ReviewPacket;
   showPanel?: boolean;
+  /**
+   * Supervisor dossier ("View student"): supervisors see only the four
+   * sections below — Programme & personal details, Programme applied for,
+   * Verification history and Corrections. Everything else (requirements,
+   * documents, proposal, qualifications, payment slips) is for the admin and
+   * Registrar screens only. Because this is a Server Component, the hidden
+   * sections are never sent to the browser either.
+   */
+  supervisorView?: boolean;
 }) {
   const proposal = packet.proposal;
   const missingLabels = packet.requirements
@@ -98,6 +108,7 @@ export function ApplicationReview({
   return (
     <div className="space-y-4">
       {/* Status strip */}
+      {!supervisorView && (
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_STYLE[packet.status] ?? "bg-neutral-100 text-neutral-600"}`}
@@ -127,6 +138,7 @@ export function ApplicationReview({
           </span>
         )}
       </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Programme & personal details">
@@ -177,6 +189,8 @@ export function ApplicationReview({
         </Card>
       </div>
 
+      {!supervisorView && (
+      <>
       <RequirementsChecklist
         requirements={packet.requirements}
         summary={packet.requirementSummary}
@@ -358,6 +372,8 @@ export function ApplicationReview({
           )}
         </Card>
       </div>
+      </>
+      )}
 
       {/* Verification history */}
       <Card title="Verification history">
@@ -429,7 +445,7 @@ export function ApplicationReview({
                     <p className="text-xs text-neutral-700">{c.studentResponse}</p>
                   </div>
                 )}
-                {c.status === "OPEN" && (
+                {c.status === "OPEN" && !supervisorView && (
                   <div className="mt-2">
                     <ResolveCorrectionButton
                       correctionId={c.id}
